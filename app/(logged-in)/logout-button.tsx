@@ -1,5 +1,6 @@
 'use client';
 
+import { LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 
@@ -35,7 +36,7 @@ export default function LogoutButton() {
   return (
     <div>
       {error && (
-        <p role="alert" aria-live="assertive" className="mb-2 text-sm text-red-700">
+        <p role="alert" aria-live="assertive" className="mb-2 text-sm text-[#B42318]">
           {error}
         </p>
       )}
@@ -43,8 +44,9 @@ export default function LogoutButton() {
         type="button"
         onClick={handleLogout}
         disabled={isLoading}
-        className="w-full rounded p-2 text-left text-gray-700 hover:bg-gray-100 disabled:cursor-wait disabled:opacity-60"
+        className="flex w-full items-center gap-2 rounded-xl border border-[#E4E1DB] bg-white px-3 py-2 text-left text-sm font-medium text-[#1A1A1A] transition hover:border-[#D3D0C9] hover:bg-[#F1EFEB] disabled:cursor-wait disabled:opacity-60"
       >
+        <LogOut className="h-4 w-4 text-[#5C5C5C]" />
         {isLoading ? 'Saindo...' : 'Sair'}
       </button>
     </div>

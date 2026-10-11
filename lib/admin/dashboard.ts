@@ -1,15 +1,15 @@
 export const ENROLLMENT_STATUSES = [
-  { key: 'PENDENTE', label: 'Pendente', color: '#f59e0b' },
-  { key: 'DEFERIDO', label: 'Deferida', color: '#16a34a' },
-  { key: 'INDEFERIDO', label: 'Indeferida', color: '#dc2626' },
-  { key: 'CANCELADO', label: 'Cancelada', color: '#64748b' },
+  { key: 'PENDENTE', label: 'Pendente', color: '#B45309' },
+  { key: 'DEFERIDO', label: 'Deferida', color: '#15803D' },
+  { key: 'INDEFERIDO', label: 'Indeferida', color: '#B91C1C' },
+  { key: 'CANCELADO', label: 'Cancelada', color: '#5C5C5C' },
 ] as const;
 
 export const COURSE_STATUSES = [
-  { key: 'ANALISE', label: 'Em análise', color: '#f59e0b' },
-  { key: 'ANDAMENTO', label: 'Em andamento', color: '#2563eb' },
-  { key: 'CONCLUIDO', label: 'Concluído', color: '#16a34a' },
-  { key: 'FECHADO', label: 'Fechado', color: '#64748b' },
+  { key: 'ANALISE', label: 'Em análise', color: '#B45309' },
+  { key: 'ANDAMENTO', label: 'Em andamento', color: '#15803D' },
+  { key: 'CONCLUIDO', label: 'Concluído', color: '#1D4ED8' },
+  { key: 'FECHADO', label: 'Fechado', color: '#5C5C5C' },
 ] as const;
 
 export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number]['key'];
