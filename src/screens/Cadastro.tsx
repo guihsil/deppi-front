@@ -43,6 +43,10 @@ type FormState = {
   sexo: string;
   raca: string;
   fkEndereco: string;
+  rua: string;
+  bairro: string;
+  numero: string;
+  cep: string;
   rg: string;
   cpf: string;
   orgaoEmissor: string;
@@ -71,6 +75,10 @@ const INITIAL: FormState = {
   sexo: "",
   raca: "",
   fkEndereco: "",
+  rua: "",
+  bairro: "",
+  numero: "",
+  cep: "",
   rg: "",
   cpf: "",
   orgaoEmissor: "",
@@ -108,8 +116,12 @@ function validate(form: FormState, incluiTitulo: boolean, historico: File | null
   if (!SEXOS.some((s) => s.value === form.sexo)) e.sexo = "Selecione o sexo.";
   if (!RACAS.some((r) => r.value === form.raca)) e.raca = "Selecione a raça.";
 
-  if (!/^[1-9]\d*$/.test(form.fkEndereco.trim())) {
-    e.fkEndereco = "Informe o código (número inteiro positivo) do endereço.";
+  if (form.rua.trim().length < 2) e.rua = "Informe a rua.";
+  if (form.bairro.trim().length < 2) e.bairro = "Informe o bairro.";
+  if (!/^[1-9]\d*$/.test(form.numero.trim())) e.numero = "Informe o número (inteiro positivo).";
+  if (form.cep.replace(/\D/g, "").length !== 8) e.cep = "CEP deve ter 8 dígitos.";
+  if (form.fkEndereco.trim() && !/^[1-9]\d*$/.test(form.fkEndereco.trim())) {
+    e.fkEndereco = "Código deve ser um número inteiro positivo.";
   }
 
   if (form.rg.trim().length < 5) e.rg = "RG inválido.";
@@ -147,7 +159,10 @@ function buildPayload(form: FormState, incluiTitulo: boolean) {
     nomePai: form.nomePai.trim(),
     sexo: form.sexo,
     raca: form.raca,
-    fkEndereco: Number(form.fkEndereco.trim()),
+    rua: form.rua.trim(),
+    bairro: form.bairro.trim(),
+    numero: Number(form.numero.trim()),
+    cep: Number(form.cep.replace(/\D/g, "")),
     cargo: "ALUNO", // o cadastro público cria apenas alunos
     rg: form.rg.trim(),
     cpf: form.cpf.trim(),
@@ -156,6 +171,7 @@ function buildPayload(form: FormState, incluiTitulo: boolean) {
     dataEmissao: form.dataEmissao,
   };
 
+  if (form.fkEndereco.trim()) payload.fkEndereco = Number(form.fkEndereco.trim());
   if (form.nomeSocial.trim()) payload.nomeSocial = form.nomeSocial.trim();
   if (form.emailSecundario.trim()) payload.emailSecundario = form.emailSecundario.trim();
 
@@ -402,7 +418,27 @@ export default function Cadastro() {
           <legend>Endereço</legend>
           <div className="form-grid">
             <label className="span2">
-              Código do endereço
+              Rua
+              <input type="text" autoComplete="street-address" {...field("rua")} />
+              <FieldError message={errors.rua} />
+            </label>
+            <label>
+              Bairro
+              <input type="text" {...field("bairro")} />
+              <FieldError message={errors.bairro} />
+            </label>
+            <label>
+              Número
+              <input type="text" inputMode="numeric" {...field("numero")} />
+              <FieldError message={errors.numero} />
+            </label>
+            <label>
+              CEP
+              <input type="text" inputMode="numeric" autoComplete="postal-code" placeholder="00000-000" {...field("cep")} />
+              <FieldError message={errors.cep} />
+            </label>
+            <label>
+              Código do endereço (se já existir)
               <input type="text" inputMode="numeric" {...field("fkEndereco")} />
               <FieldError message={errors.fkEndereco} />
             </label>
