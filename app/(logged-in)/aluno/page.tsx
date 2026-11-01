@@ -1,10 +1,10 @@
 import ProtectedRoute from "../../../src/components/ProtectedRoute";
-import Placeholder from "../../../src/screens/Placeholder";
+import CoursesCatalog from "../../../src/screens/CoursesCatalog";
 
 export default function AlunoPage() {
   return (
     <ProtectedRoute roles={["ALUNO"]}>
-      <Placeholder />
+      <CoursesCatalog />
     </ProtectedRoute>
   );
 }

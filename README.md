@@ -30,7 +30,8 @@ npm run build
 ## Rotas da aplicação
 
 - `/login`: autenticação.
-- `/admin`, `/deppi`, `/professor` e `/aluno`: áreas protegidas por cargo.
+- `/admin`, `/deppi` e `/professor`: áreas protegidas por cargo.
+- `/aluno`: catálogo de cursos em andamento, protegido pelo cargo de aluno.
 - `/perfil`: consulta e edição dos dados do usuário autenticado.
 - `/403`: aviso de acesso negado.
 - `/`: redireciona para a página inicial do cargo prioritário do usuário.
