@@ -517,6 +517,158 @@
     background: #fde8e7;
   }
 
+  .courses-page {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .courses-page .page-head {
+    margin-bottom: 0;
+  }
+
+  .courses-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+    gap: 1rem;
+  }
+
+  .courses-filters input,
+  .courses-filters select {
+    width: 100%;
+  }
+
+  .courses-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+    align-items: stretch;
+    gap: 1.25rem;
+  }
+
+  .course-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .course-card-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .course-card-heading h2 {
+    margin: 0;
+    font: 800 1.25rem/1.2 var(--font-heading);
+    overflow-wrap: anywhere;
+  }
+
+  .course-institution {
+    margin: 0;
+    color: var(--color-ink-secondary);
+    font-weight: 700;
+  }
+
+  .course-sold-out {
+    flex: none;
+    border: 1px solid var(--color-red);
+    border-radius: 999px;
+    padding: 0.15rem 0.65rem;
+    color: #8d2926;
+    background: #fde8e7;
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .course-details {
+    display: grid;
+    gap: 0.7rem;
+    margin: 0;
+  }
+
+  .course-details div {
+    display: grid;
+    grid-template-columns: minmax(100px, 0.8fr) minmax(0, 1.2fr);
+    gap: 0.75rem;
+  }
+
+  .course-details dt {
+    color: var(--color-ink-secondary);
+    font-weight: 700;
+  }
+
+  .course-details dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .course-vacancies {
+    margin: auto 0 0;
+    border-top: 1px solid var(--color-line);
+    padding-top: 0.75rem;
+    font-weight: 700;
+  }
+
+  .courses-empty,
+  .courses-message {
+    display: grid;
+    justify-items: start;
+    gap: 0.75rem;
+  }
+
+  .courses-empty h2 {
+    margin: 0;
+  }
+
+  .courses-message .alert {
+    margin: 0;
+  }
+
+  .course-skeleton {
+    display: grid;
+    min-height: 250px;
+    align-content: start;
+    gap: 1rem;
+    border: 2px solid var(--color-line);
+    border-radius: 10px;
+    padding: 1.25rem;
+    background: #fff;
+  }
+
+  .course-skeleton span {
+    display: block;
+    height: 1rem;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #e6eaf4 25%, #f4f7fd 50%, #e6eaf4 75%);
+    background-size: 200% 100%;
+    animation: course-skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+
+  .course-skeleton span:first-child {
+    width: 72%;
+    height: 1.5rem;
+  }
+
+  .course-skeleton span:nth-child(2) {
+    width: 54%;
+  }
+
+  .course-skeleton span:nth-child(3) {
+    width: 90%;
+    height: 4rem;
+  }
+
+  .course-skeleton span:last-child {
+    width: 60%;
+  }
+
+  @keyframes course-skeleton-shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+
   .center-msg {
     padding: 4rem 1rem;
     text-align: center;
@@ -751,6 +903,7 @@
   .grid2,
   .form-grid,
   .profile-grid,
+  .courses-filters,
   .login {
     grid-template-columns: 1fr;
   }
