@@ -31,6 +31,7 @@ npm run build
 
 - `/login`: autenticação.
 - `/admin`, `/deppi`, `/professor` e `/aluno`: áreas protegidas por cargo.
+- `/perfil`: consulta e edição dos dados do usuário autenticado.
 - `/403`: aviso de acesso negado.
 - `/`: redireciona para a página inicial do cargo prioritário do usuário.
 
