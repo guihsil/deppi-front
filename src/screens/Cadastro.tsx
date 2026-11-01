@@ -7,7 +7,7 @@ import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import { homeFor } from "../roles";
 
-// ── Contrato do backend (POST /auth/cadastro e POST /documentos/:id/enviar) ──
+// ── Contrato do backend (POST /auth/cadastro) ──
 const SEXOS = [
   { value: "MASCULINO", label: "Masculino" },
   { value: "FEMININO", label: "Feminino" },
@@ -22,12 +22,24 @@ const RACAS = [
   { value: "NAO_DECLARADO", label: "Não declarado" },
 ] as const;
 
-const TIPOS_HISTORICO = ["application/pdf", "image/jpeg", "image/png"];
-const TAMANHO_MAXIMO = 5 * 1024 * 1024;
-
 const DATA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const CPF_REGEX = /^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ETAPAS = [
+  "Dados pessoais",
+  "Acesso",
+  "Endereço",
+  "Identidade",
+  "Título de eleitor",
+] as const;
+
+const CAMPOS_POR_ETAPA: (keyof Errors)[][] = [
+  ["nome", "nomeSocial", "dataNasc", "naturalidade", "nomeMae", "nomePai", "sexo", "raca", "matricula"],
+  ["email", "emailSecundario", "senha", "confirmarSenha"],
+  ["rua", "bairro", "numero", "cep"],
+  ["rg", "cpf", "orgaoEmissor", "estado", "dataEmissao"],
+  ["tituloNumero", "zonaEleitoral", "secaoEleitoral", "ufTitulo"],
+];
 
 type FormState = {
   nome: string;
@@ -40,9 +52,9 @@ type FormState = {
   confirmarSenha: string;
   nomeMae: string;
   nomePai: string;
+  matricula: string;
   sexo: string;
   raca: string;
-  fkEndereco: string;
   rua: string;
   bairro: string;
   numero: string;
@@ -56,10 +68,9 @@ type FormState = {
   zonaEleitoral: string;
   secaoEleitoral: string;
   ufTitulo: string;
-  inscricaoId: string;
 };
 
-type Errors = Partial<Record<keyof FormState | "historico", string>>;
+type Errors = Partial<Record<keyof FormState, string>>;
 
 const INITIAL: FormState = {
   nome: "",
@@ -72,9 +83,9 @@ const INITIAL: FormState = {
   confirmarSenha: "",
   nomeMae: "",
   nomePai: "",
+  matricula: "",
   sexo: "",
   raca: "",
-  fkEndereco: "",
   rua: "",
   bairro: "",
   numero: "",
@@ -88,17 +99,11 @@ const INITIAL: FormState = {
   zonaEleitoral: "",
   secaoEleitoral: "",
   ufTitulo: "",
-  inscricaoId: "",
-};
-
-type CadastroResponse = {
-  mensagem?: string;
-  token?: string;
 };
 
 type Resultado = { destino: string; avisos: string[] };
 
-function validate(form: FormState, incluiTitulo: boolean, historico: File | null): Errors {
+function validate(form: FormState): Errors {
   const e: Errors = {};
   const nome = form.nome.trim();
 
@@ -113,6 +118,7 @@ function validate(form: FormState, incluiTitulo: boolean, historico: File | null
   if (form.confirmarSenha !== form.senha) e.confirmarSenha = "As senhas não conferem.";
   if (form.nomeMae.trim().length < 3) e.nomeMae = "Informe o nome da mãe.";
   if (form.nomePai.trim().length < 3) e.nomePai = "Informe o nome do pai.";
+  if (!form.matricula.trim()) e.matricula = "Matrícula é obrigatória.";
   if (!SEXOS.some((s) => s.value === form.sexo)) e.sexo = "Selecione o sexo.";
   if (!RACAS.some((r) => r.value === form.raca)) e.raca = "Selecione a raça.";
 
@@ -120,9 +126,6 @@ function validate(form: FormState, incluiTitulo: boolean, historico: File | null
   if (form.bairro.trim().length < 2) e.bairro = "Informe o bairro.";
   if (!/^[1-9]\d*$/.test(form.numero.trim())) e.numero = "Informe o número (inteiro positivo).";
   if (form.cep.replace(/\D/g, "").length !== 8) e.cep = "CEP deve ter 8 dígitos.";
-  if (form.fkEndereco.trim() && !/^[1-9]\d*$/.test(form.fkEndereco.trim())) {
-    e.fkEndereco = "Código deve ser um número inteiro positivo.";
-  }
 
   if (form.rg.trim().length < 5) e.rg = "RG inválido.";
   if (!CPF_REGEX.test(form.cpf.trim())) e.cpf = "CPF inválido.";
@@ -130,25 +133,23 @@ function validate(form: FormState, incluiTitulo: boolean, historico: File | null
   if (form.estado.trim().length !== 2) e.estado = "Use 2 letras (ex: CE).";
   if (!DATA_REGEX.test(form.dataEmissao)) e.dataEmissao = "Informe a data de emissão.";
 
-  if (incluiTitulo) {
-    if (!form.tituloNumero.trim()) e.tituloNumero = "Número do título é obrigatório.";
-    if (!form.zonaEleitoral.trim()) e.zonaEleitoral = "Zona eleitoral é obrigatória.";
-    if (!form.secaoEleitoral.trim()) e.secaoEleitoral = "Seção eleitoral é obrigatória.";
-    if (form.ufTitulo.trim().length !== 2) e.ufTitulo = "Use 2 letras (ex: CE).";
-  }
-
-  if (historico) {
-    if (!TIPOS_HISTORICO.includes(historico.type)) {
-      e.historico = "Envie um arquivo PDF, JPG ou PNG.";
-    } else if (historico.size > TAMANHO_MAXIMO) {
-      e.historico = "O arquivo deve ter no máximo 5 MB.";
-    }
-  }
+  if (!form.tituloNumero.trim()) e.tituloNumero = "Número do título é obrigatório.";
+  if (!form.zonaEleitoral.trim()) e.zonaEleitoral = "Zona eleitoral é obrigatória.";
+  if (!form.secaoEleitoral.trim()) e.secaoEleitoral = "Seção eleitoral é obrigatória.";
+  if (form.ufTitulo.trim().length !== 2) e.ufTitulo = "Use 2 letras (ex: CE).";
 
   return e;
 }
 
-function buildPayload(form: FormState, incluiTitulo: boolean) {
+function errorsForStep(errors: Errors, step: number): Errors {
+  const stepErrors: Errors = {};
+  for (const field of CAMPOS_POR_ETAPA[step]) {
+    if (errors[field]) stepErrors[field] = errors[field];
+  }
+  return stepErrors;
+}
+
+function buildPayload(form: FormState) {
   const payload: Record<string, unknown> = {
     nome: form.nome.trim(),
     dataNasc: form.dataNasc,
@@ -157,12 +158,15 @@ function buildPayload(form: FormState, incluiTitulo: boolean) {
     senha: form.senha,
     nomeMae: form.nomeMae.trim(),
     nomePai: form.nomePai.trim(),
+    matricula: form.matricula.trim(),
     sexo: form.sexo,
     raca: form.raca,
-    rua: form.rua.trim(),
-    bairro: form.bairro.trim(),
-    numero: Number(form.numero.trim()),
-    cep: Number(form.cep.replace(/\D/g, "")),
+    endereco: {
+      rua: form.rua.trim(),
+      bairro: form.bairro.trim(),
+      numero: Number(form.numero.trim()),
+      cep: Number(form.cep.replace(/\D/g, "")),
+    },
     cargo: "ALUNO", // o cadastro público cria apenas alunos
     rg: form.rg.trim(),
     cpf: form.cpf.trim(),
@@ -171,16 +175,13 @@ function buildPayload(form: FormState, incluiTitulo: boolean) {
     dataEmissao: form.dataEmissao,
   };
 
-  if (form.fkEndereco.trim()) payload.fkEndereco = Number(form.fkEndereco.trim());
   if (form.nomeSocial.trim()) payload.nomeSocial = form.nomeSocial.trim();
   if (form.emailSecundario.trim()) payload.emailSecundario = form.emailSecundario.trim();
 
-  if (incluiTitulo) {
-    payload.tituloNumero = form.tituloNumero.trim();
-    payload.zonaEleitoral = form.zonaEleitoral.trim();
-    payload.secaoEleitoral = form.secaoEleitoral.trim();
-    payload.ufTitulo = form.ufTitulo.trim().toUpperCase();
-  }
+  payload.tituloNumero = form.tituloNumero.trim();
+  payload.zonaEleitoral = form.zonaEleitoral.trim();
+  payload.secaoEleitoral = form.secaoEleitoral.trim();
+  payload.ufTitulo = form.ufTitulo.trim().toUpperCase();
 
   return payload;
 }
@@ -199,12 +200,11 @@ export default function Cadastro() {
   const submitting = useRef(false);
 
   const [form, setForm] = useState<FormState>(INITIAL);
-  const [incluiTitulo, setIncluiTitulo] = useState(false);
-  const [historico, setHistorico] = useState<File | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [erro, setErro] = useState("");
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<Resultado | null>(null);
+  const [etapa, setEtapa] = useState(0);
 
   function field(name: keyof FormState) {
     return {
@@ -218,15 +218,24 @@ export default function Cadastro() {
     };
   }
 
-  function onFile(event: ChangeEvent<HTMLInputElement>) {
-    setHistorico(event.target.files?.[0] ?? null);
-  }
-
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting.current) return;
 
-    const found = validate(form, incluiTitulo, historico);
+    if (etapa < ETAPAS.length - 1) {
+      const found = errorsForStep(validate(form), etapa);
+      setErrors(found);
+      setErro("");
+      if (Object.keys(found).length > 0) {
+        setErro("Revise os campos destacados.");
+        return;
+      }
+
+      setEtapa((current) => current + 1);
+      return;
+    }
+
+    const found = validate(form);
     setErrors(found);
     setErro("");
     if (Object.keys(found).length > 0) {
@@ -239,13 +248,13 @@ export default function Cadastro() {
 
     try {
       // 1. Cadastro do aluno
-      const cadastro = await api<CadastroResponse>("/auth/cadastro", {
+      await api("/auth/cadastro", {
         method: "POST",
-        body: buildPayload(form, incluiTitulo),
+        body: buildPayload(form),
         auth: false,
       });
 
-      // 2. Sessão (mesmo fluxo do login) para obter cargos e destino
+      // Sessão (mesmo fluxo do login) para obter cargos e destino
       const avisos: string[] = [];
       let destino = "/login";
       try {
@@ -253,30 +262,6 @@ export default function Cadastro() {
         destino = homeFor(session.usuario.cargos);
       } catch {
         avisos.push("Cadastro realizado, mas não foi possível entrar automaticamente. Faça login.");
-      }
-
-      // 3. Envio opcional do histórico (rota de documentos)
-      if (historico) {
-        const inscricaoId = form.inscricaoId.trim();
-        if (!inscricaoId || !cadastro.token) {
-          avisos.push(
-            "O histórico não foi enviado: o envio exige o código de uma inscrição, que ainda não existe. Envie-o depois de se inscrever.",
-          );
-        } else {
-          try {
-            const dados = new FormData();
-            dados.append("file", historico);
-            dados.append("categoria", "HISTORICO_ESCOLAR");
-            await api(`/documentos/${encodeURIComponent(inscricaoId)}/enviar`, {
-              method: "POST",
-              body: dados,
-              token: cadastro.token,
-            });
-          } catch (error) {
-            const motivo = error instanceof Error ? ` ${error.message}` : "";
-            avisos.push(`O cadastro foi concluído, mas o histórico não foi enviado.${motivo}`);
-          }
-        }
       }
 
       if (avisos.length === 0) {
@@ -292,6 +277,10 @@ export default function Cadastro() {
           if (key in INITIAL && !porCampo[key]) porCampo[key] = item.mensagem;
         }
         setErrors(porCampo);
+        const etapaComErro = CAMPOS_POR_ETAPA.findIndex((campos) =>
+          campos.some((campo) => porCampo[campo]),
+        );
+        if (etapaComErro >= 0) setEtapa(etapaComErro);
         setErro(error.message);
       } else {
         setErro("Não foi possível realizar o cadastro.");
@@ -328,7 +317,25 @@ export default function Cadastro() {
           <p className="muted">Preencha seus dados para acessar o DEPPI.</p>
         </div>
 
-        <fieldset disabled={loading}>
+        <div>
+          <p className="muted small" aria-live="polite">
+            Etapa {etapa + 1} de {ETAPAS.length}: {ETAPAS[etapa]}
+          </p>
+          <ol className="cadastro-progress" aria-label="Etapas do cadastro">
+            {ETAPAS.map((nome, index) => (
+              <li
+                key={nome}
+                className={index === etapa ? "current" : index < etapa ? "completed" : undefined}
+                aria-current={index === etapa ? "step" : undefined}
+              >
+                <span className="cadastro-progress-number">{index + 1}</span>
+                <span>{nome}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        {etapa === 0 && <fieldset disabled={loading}>
           <legend>Dados pessoais</legend>
           <div className="form-grid">
             <label className="span2">
@@ -385,10 +392,15 @@ export default function Cadastro() {
               <input type="text" {...field("nomePai")} />
               <FieldError message={errors.nomePai} />
             </label>
+            <label>
+              Matrícula
+              <input type="text" {...field("matricula")} />
+              <FieldError message={errors.matricula} />
+            </label>
           </div>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset disabled={loading}>
+        {etapa === 1 && <fieldset disabled={loading}>
           <legend>Acesso</legend>
           <div className="form-grid">
             <label>
@@ -412,9 +424,9 @@ export default function Cadastro() {
               <FieldError message={errors.confirmarSenha} />
             </label>
           </div>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset disabled={loading}>
+        {etapa === 2 && <fieldset disabled={loading}>
           <legend>Endereço</legend>
           <div className="form-grid">
             <label className="span2">
@@ -437,15 +449,10 @@ export default function Cadastro() {
               <input type="text" inputMode="numeric" autoComplete="postal-code" placeholder="00000-000" {...field("cep")} />
               <FieldError message={errors.cep} />
             </label>
-            <label>
-              Código do endereço (se já existir)
-              <input type="text" inputMode="numeric" {...field("fkEndereco")} />
-              <FieldError message={errors.fkEndereco} />
-            </label>
           </div>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset disabled={loading}>
+        {etapa === 3 && <fieldset disabled={loading}>
           <legend>Identidade</legend>
           <div className="form-grid">
             <label>
@@ -474,63 +481,33 @@ export default function Cadastro() {
               <FieldError message={errors.dataEmissao} />
             </label>
           </div>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset disabled={loading}>
+        {etapa === 4 && <fieldset disabled={loading}>
           <legend>Título de eleitor</legend>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={incluiTitulo}
-              onChange={(event) => setIncluiTitulo(event.target.checked)}
-            />
-            Quero informar meu título de eleitor
-          </label>
-          {incluiTitulo && (
-            <div className="form-grid">
-              <label>
-                Número
-                <input type="text" inputMode="numeric" {...field("tituloNumero")} />
-                <FieldError message={errors.tituloNumero} />
-              </label>
-              <label>
-                UF
-                <input type="text" maxLength={2} placeholder="CE" {...field("ufTitulo")} />
-                <FieldError message={errors.ufTitulo} />
-              </label>
-              <label>
-                Zona eleitoral
-                <input type="text" inputMode="numeric" {...field("zonaEleitoral")} />
-                <FieldError message={errors.zonaEleitoral} />
-              </label>
-              <label>
-                Seção eleitoral
-                <input type="text" inputMode="numeric" {...field("secaoEleitoral")} />
-                <FieldError message={errors.secaoEleitoral} />
-              </label>
-            </div>
-          )}
-        </fieldset>
-
-        <fieldset disabled={loading}>
-          <legend>Histórico (opcional)</legend>
           <div className="form-grid">
-            <label className="span2">
-              Documento de histórico (PDF, JPG ou PNG, até 5 MB)
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={onFile} />
-              <FieldError message={errors.historico} />
+            <label>
+              Número
+              <input type="text" inputMode="numeric" {...field("tituloNumero")} />
+              <FieldError message={errors.tituloNumero} />
             </label>
-            {historico && (
-              <label className="span2">
-                Código da inscrição
-                <input type="text" {...field("inscricaoId")} />
-                <span className="muted small">
-                  O envio do histórico é vinculado a uma inscrição. Sem o código, ele não será enviado.
-                </span>
-              </label>
-            )}
+            <label>
+              UF
+              <input type="text" maxLength={2} placeholder="CE" {...field("ufTitulo")} />
+              <FieldError message={errors.ufTitulo} />
+            </label>
+            <label>
+              Zona eleitoral
+              <input type="text" inputMode="numeric" {...field("zonaEleitoral")} />
+              <FieldError message={errors.zonaEleitoral} />
+            </label>
+            <label>
+              Seção eleitoral
+              <input type="text" inputMode="numeric" {...field("secaoEleitoral")} />
+              <FieldError message={errors.secaoEleitoral} />
+            </label>
           </div>
-        </fieldset>
+        </fieldset>}
 
         {erro && (
           <p className="alert" role="alert">
@@ -538,9 +515,25 @@ export default function Cadastro() {
           </p>
         )}
 
-        <button className="btn" type="submit" disabled={loading}>
-          {loading ? "Cadastrando…" : "Criar conta"}
-        </button>
+        <div className="cadastro-actions">
+          {etapa > 0 && (
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setEtapa((current) => current - 1);
+                setErrors({});
+                setErro("");
+              }}
+            >
+              Voltar
+            </button>
+          )}
+          <button className="btn" type="submit" disabled={loading}>
+            {loading ? "Cadastrando…" : etapa === ETAPAS.length - 1 ? "Criar conta" : "Próximo"}
+          </button>
+        </div>
         <p className="muted small">
           Já tem conta? <Link href="/login">Entrar</Link>
         </p>

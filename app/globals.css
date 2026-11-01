@@ -540,6 +540,58 @@
     font: 800 1.05rem var(--font-heading);
   }
 
+  .cadastro-progress {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cadastro-progress li {
+    display: grid;
+    min-width: 0;
+    justify-items: center;
+    gap: 0.35rem;
+    color: var(--color-ink-secondary);
+    font-size: 0.75rem;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .cadastro-progress-number {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border: 2px solid var(--color-line);
+    border-radius: 50%;
+    background: #fff;
+    font-weight: 700;
+  }
+
+  .cadastro-progress li.current {
+    color: var(--color-ink);
+    font-weight: 700;
+  }
+
+  .cadastro-progress li.current .cadastro-progress-number,
+  .cadastro-progress li.completed .cadastro-progress-number {
+    border-color: var(--color-ink);
+    background: var(--color-yellow);
+  }
+
+  .cadastro-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+  }
+
+  .cadastro-actions .btn-ghost {
+    margin-right: auto;
+  }
+
   .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -584,6 +636,10 @@
 }
 
 @media (max-width: 860px) {
+  .cadastro-progress {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .shell {
     grid-template-columns: 1fr;
   }
