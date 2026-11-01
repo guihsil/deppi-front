@@ -25,6 +25,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav aria-label="Menu principal">
+          <Link
+            href="/perfil"
+            className={`nav-link${pathname === "/perfil" ? " active" : ""}`}
+            aria-current={pathname === "/perfil" ? "page" : undefined}
+          >
+            Meu perfil
+          </Link>
           {roles.map((role) => (
             <div key={role} className="nav-group">
               {roles.length > 1 && <p className="nav-title">{ROLE_LABEL[role]}</p>}

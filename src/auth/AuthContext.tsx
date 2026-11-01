@@ -33,6 +33,7 @@ type AuthContextValue = {
   isAuth: boolean;
   ready: boolean;
   login: (email: string, senha: string) => Promise<Session>;
+  updateUserName: (nome: string) => void;
   logout: () => void;
 };
 
@@ -119,6 +120,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return newSession;
   }, []);
 
+  const updateUserName = useCallback((nome: string) => {
+    if (!session) return;
+
+    const updatedSession: Session = {
+      ...session,
+      usuario: { ...session.usuario, nome },
+    };
+    localStorage.setItem(KEY, JSON.stringify(updatedSession));
+    setSession(updatedSession);
+  }, [session]);
+
   useEffect(() => {
     window.addEventListener("deppi:unauthorized", logout);
     return () => window.removeEventListener("deppi:unauthorized", logout);
@@ -132,9 +144,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuth: Boolean(session?.token),
       ready,
       login,
+      updateUserName,
       logout,
     }),
-    [session, ready, login, logout],
+    [session, ready, login, updateUserName, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

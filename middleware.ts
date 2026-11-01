@@ -4,7 +4,15 @@ import { canAccessAdminPath, parseRolesCookie, ROLE_COOKIE } from '@/lib/auth/ro
 
 const AUTH_COOKIE = 'deppi_token';
 const PUBLIC_PATHS = ['/login', '/cadastro', '/access-denied'];
-const CLIENT_AUTH_PATHS = ['/', '/403', '/admin', '/aluno', '/deppi', '/professor'];
+const CLIENT_AUTH_PATHS = [
+  '/',
+  '/403',
+  '/admin',
+  '/aluno',
+  '/deppi',
+  '/perfil',
+  '/professor',
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -445,6 +445,78 @@
     font: 800 5rem/1 var(--font-heading);
   }
 
+  .profile-page {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .profile-card {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .profile-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .profile-header h1 {
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+  }
+
+  .profile-header-actions,
+  .profile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .profile-section-title {
+    margin: 0;
+    font: 800 1.15rem var(--font-heading);
+  }
+
+  .profile-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .profile-field {
+    display: grid;
+    min-width: 0;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--color-line);
+    padding: 0.5rem 0;
+    overflow-wrap: anywhere;
+  }
+
+  .profile-field-label {
+    color: var(--color-ink-secondary);
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .profile-field input {
+    width: 100%;
+  }
+
+  .profile-feedback {
+    margin: 0;
+    border: 2px solid var(--color-green);
+    border-radius: 8px;
+    padding: 0.65rem 0.8rem;
+    background: #e8f6ef;
+  }
+
+  .profile-feedback.error {
+    border-color: var(--color-red);
+    background: #fde8e7;
+  }
+
   .center-msg {
     padding: 4rem 1rem;
     text-align: center;
@@ -678,6 +750,7 @@
 
   .grid2,
   .form-grid,
+  .profile-grid,
   .login {
     grid-template-columns: 1fr;
   }
