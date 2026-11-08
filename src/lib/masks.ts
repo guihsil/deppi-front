@@ -30,3 +30,41 @@ export function maskPhone(raw: string): string {
 export function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
+
+export function maskCNPJ(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 14);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  }
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+export function isValidCNPJ(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length !== 14) return false;
+
+  if (/^(\d)\1{13}$/.test(digits)) return false;
+
+  let sum = 0;
+  let weight = 5;
+  for (let index = 0; index < 12; index += 1) {
+    sum += Number(digits[index]) * weight;
+    weight = weight === 2 ? 9 : weight - 1;
+  }
+  let digit = 11 - (sum % 11);
+  if (digit >= 10) digit = 0;
+  if (digit !== Number(digits[12])) return false;
+
+  sum = 0;
+  weight = 6;
+  for (let index = 0; index < 13; index += 1) {
+    sum += Number(digits[index]) * weight;
+    weight = weight === 2 ? 9 : weight - 1;
+  }
+  digit = 11 - (sum % 11);
+  if (digit >= 10) digit = 0;
+  return digit === Number(digits[13]);
+}
