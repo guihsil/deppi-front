@@ -152,9 +152,11 @@ function errorsForStep(errors: Errors, step: number): Errors {
 function buildPayload(form: FormState) {
   const payload: Record<string, unknown> = {
     nome: form.nome.trim(),
+    nomeSocial: form.nomeSocial.trim(),
     dataNasc: form.dataNasc,
     naturalidade: form.naturalidade.trim(),
     email: form.email.trim(),
+    emailSecundario: form.emailSecundario.trim(),
     senha: form.senha,
     nomeMae: form.nomeMae.trim(),
     nomePai: form.nomePai.trim(),
@@ -174,9 +176,6 @@ function buildPayload(form: FormState) {
     estado: form.estado.trim().toUpperCase(),
     dataEmissao: form.dataEmissao,
   };
-
-  if (form.nomeSocial.trim()) payload.nomeSocial = form.nomeSocial.trim();
-  if (form.emailSecundario.trim()) payload.emailSecundario = form.emailSecundario.trim();
 
   payload.tituloNumero = form.tituloNumero.trim();
   payload.zonaEleitoral = form.zonaEleitoral.trim();
