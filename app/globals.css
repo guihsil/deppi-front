@@ -926,3 +926,50 @@
     transition: none !important;
   }
 }
+
+@layer components {
+  .percapita {
+    display: grid;
+    gap: 0.25rem;
+    border: 2px dashed var(--color-line);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    background: #fff;
+  }
+
+  .percapita strong {
+    font: 800 1.6rem var(--font-heading);
+  }
+
+  .phone-list,
+  .pgd {
+    display: grid;
+    align-content: start;
+    gap: 0.6rem;
+    margin: 0;
+    border: 2px solid var(--color-line);
+    border-radius: 8px;
+    padding: 0.75rem 1rem 1rem;
+    min-width: 0;
+  }
+
+  .phone-list legend,
+  .pgd legend {
+    padding: 0 0.4rem;
+    font-weight: 700;
+  }
+
+  .phone-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .phone-row input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .pgd[aria-invalid="true"] {
+    border-color: var(--color-red);
+  }
+}

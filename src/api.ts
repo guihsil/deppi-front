@@ -31,6 +31,7 @@ function errorMessage(data: unknown): string | undefined {
   const body = data as ApiErrorBody;
   if (typeof body.mensagem === "string") return body.mensagem;
   if (typeof body.error === "string") return body.error;
+  if (typeof (body as { erro?: unknown }).erro === "string") return (body as { erro: string }).erro;
   return undefined;
 }
 
@@ -40,10 +41,13 @@ function fieldErrors(data: unknown): ApiFieldError[] {
   if (!Array.isArray(erros)) return [];
   return erros.flatMap((item): ApiFieldError[] => {
     if (typeof item !== "object" || item === null) return [];
-    const { campo, mensagem } = item as Record<string, unknown>;
-    return typeof campo === "string" && typeof mensagem === "string"
-      ? [{ campo, mensagem }]
-      : [];
+    const { campo, mensagem, path, message } = item as Record<string, unknown>;
+    if (typeof campo === "string" && typeof mensagem === "string") return [{ campo, mensagem }];
+    // Formato de issue do zod usado pelo backend: { path: [...], message }
+    if (Array.isArray(path) && typeof message === "string") {
+      return [{ campo: path.join("."), mensagem: message }];
+    }
+    return [];
   });
 }
 
@@ -86,10 +90,12 @@ export async function api<T>(
     if (response.status === 401 && auth && typeof window !== "undefined") {
       window.dispatchEvent(new Event("deppi:unauthorized"));
     }
+    const fields = fieldErrors(data);
     throw new ApiError(
-      errorMessage(data) ?? "Algo deu errado.",
+      errorMessage(data) ??
+        (fields.length > 0 ? "Corrija os campos destacados." : "Algo deu errado."),
       response.status,
-      fieldErrors(data),
+      fields,
     );
   }
 

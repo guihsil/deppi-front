@@ -18,8 +18,12 @@ export type RouteDefinition = {
 export const ROUTES: readonly RouteDefinition[] = [
   { path: "/admin", label: "Início", roles: ["ADMIN"] },
   { path: "/deppi", label: "Início", roles: ["DEPPI"] },
+  { path: "/deppi/instituicoes", label: "Instituições", roles: ["DEPPI", "ADMIN"] },
+  { path: "/deppi/professores", label: "Professores", roles: ["DEPPI"] },
+  { path: "/deppi/cursos", label: "Cursos", roles: ["DEPPI", "ADMIN"] },
   { path: "/professor", label: "Início", roles: ["PROFESSOR"] },
   { path: "/aluno", label: "Início", roles: ["ALUNO"] },
+  { path: "/professor/conta", label: "Minha conta", roles: ["PROFESSOR"] },
 ];
 
 export function isRole(value: unknown): value is Role {
