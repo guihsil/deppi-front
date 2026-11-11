@@ -22,6 +22,7 @@ export const ROUTES: readonly RouteDefinition[] = [
   { path: "/deppi/professores", label: "Professores", roles: ["DEPPI"] },
   { path: "/deppi/cursos", label: "Cursos", roles: ["DEPPI", "ADMIN"] },
   { path: "/professor", label: "Início", roles: ["PROFESSOR"] },
+  { path: "/professor/cursos", label: "Cadastrar curso", roles: ["PROFESSOR"] },
   { path: "/aluno", label: "Início", roles: ["ALUNO"] },
   { path: "/professor/conta", label: "Minha conta", roles: ["PROFESSOR"] },
 ];

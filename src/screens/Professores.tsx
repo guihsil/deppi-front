@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
-import { maskPhone } from "../lib/masks";
+import { isValidEmail, maskPhone } from "../lib/masks";
 
 type Professor = {
   id: string;
@@ -16,6 +16,8 @@ type Professor = {
   emPGD?: boolean;
   fkUsuario?: string | number;
   telefones?: string[];
+  telefonesInstitucionais?: string[];
+  telefonesPessoais?: string[];
   alocacoes?: Array<{ curso?: string; nome?: string; periodo?: string; status?: string }>;
 };
 
@@ -23,7 +25,8 @@ type FormState = {
   siape: string;
   fkUsuario: string;
   emailSiape: string;
-  telefones: string[];
+  telefonesInstitucionais: string[];
+  telefonesPessoais: string[];
   emPGD: boolean | null;
   titulacao: string;
   escolaridade: string;
@@ -33,7 +36,8 @@ const emptyForm: FormState = {
   siape: "",
   fkUsuario: "",
   emailSiape: "",
-  telefones: [""],
+  telefonesInstitucionais: [""],
+  telefonesPessoais: [""],
   emPGD: null,
   titulacao: "",
   escolaridade: "",
@@ -44,6 +48,17 @@ type UserOption = {
   nome?: string;
   email?: string;
   matricula?: string;
+};
+
+type ProfessorPayload = {
+  siape: string;
+  fkUsuario: string;
+  emailSiape: string | null;
+  telefonesInstitucionais: string[];
+  telefonesPessoais: string[];
+  emPGD: boolean | null;
+  titulacao: string | null;
+  escolaridade: string | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -62,7 +77,7 @@ function readId(value: unknown): string {
 }
 
 function normalizePhones(value: unknown): string[] {
-  if (!Array.isArray(value)) return [""];
+  if (!Array.isArray(value)) return [];
   return value
     .map((item) => (typeof item === "string" ? maskPhone(item) : typeof item === "number" ? maskPhone(String(item)) : ""))
     .filter((item) => item.length > 0);
@@ -83,7 +98,8 @@ function normalizeProfessor(value: unknown): Professor | null {
   const escolaridade = readText(value.escolaridade ?? value.formacao);
   const emPGD = typeof value.emPGD === "boolean" ? value.emPGD : undefined;
   const fkUsuario = readId(value.fkUsuario ?? value.usuarioId ?? (usuario ? usuario.id : undefined));
-  const telefones = normalizePhones(value.telefones ?? value.telefonesInstitucionais ?? value.telefonesPessoais);
+  const telefonesInstitucionais = normalizePhones(value.telefonesInstitucionais ?? value.telefones);
+  const telefonesPessoais = normalizePhones(value.telefonesPessoais);
   const alocacoes = Array.isArray(value.alocacoes) || Array.isArray(value.cursos)
     ? (Array.isArray(value.alocacoes) ? value.alocacoes : value.cursos)
     : [];
@@ -98,7 +114,9 @@ function normalizeProfessor(value: unknown): Professor | null {
     escolaridade: escolaridade || undefined,
     emPGD,
     fkUsuario: fkUsuario || undefined,
-    telefones: telefones.length > 0 ? telefones : [""],
+    telefones: [...telefonesInstitucionais, ...telefonesPessoais],
+    telefonesInstitucionais,
+    telefonesPessoais,
     alocacoes: Array.isArray(alocacoes) ? alocacoes.map((item) => (isRecord(item) ? item : {})) : [],
   };
 }
@@ -137,8 +155,21 @@ function normalizeUserOptions(value: unknown): UserOption[] {
   });
 }
 
+function confirmsProfessorRole(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const professor = isRecord(value.professor) ? value.professor : value;
+  const usuario = isRecord(professor.usuario)
+    ? professor.usuario
+    : isRecord(value.usuario)
+      ? value.usuario
+      : null;
+  const cargos = usuario?.cargos ?? professor.cargos ?? value.cargos;
+  return Array.isArray(cargos) && cargos.includes("PROFESSOR");
+}
+
 export default function ProfessoresScreen() {
   const { token } = useAuth();
+  const submitting = useRef(false);
   const [professors, setProfessors] = useState<Professor[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +178,7 @@ export default function ProfessoresScreen() {
   const [error, setError] = useState("");
   const [userError, setUserError] = useState("");
   const [feedback, setFeedback] = useState<{ message: string; ok: boolean } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
 
@@ -239,18 +271,29 @@ export default function ProfessoresScreen() {
     [professors, selectedId],
   );
 
+  const availableUsers = useMemo(() => {
+    const linkedUserIds = new Set(
+      professors
+        .filter((professor) => professor.id !== selectedId)
+        .map((professor) => String(professor.fkUsuario ?? ""))
+        .filter(Boolean),
+    );
+    return users.filter((user) => !linkedUserIds.has(String(user.id)));
+  }, [professors, selectedId, users]);
+
   function resetForm() {
     setSelectedId(null);
     setForm(emptyForm);
     setFeedback(null);
+    setFieldErrors({});
   }
 
   function updateField(field: keyof FormState, value: string | boolean | null) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function handlePhones(nextPhones: string[]) {
-    setForm((current) => ({ ...current, telefones: nextPhones }));
+  function handlePhones(field: "telefonesInstitucionais" | "telefonesPessoais", nextPhones: string[]) {
+    setForm((current) => ({ ...current, [field]: nextPhones }));
   }
 
   function handleEdit(professor: Professor) {
@@ -259,64 +302,106 @@ export default function ProfessoresScreen() {
       siape: professor.siape,
       fkUsuario: String(professor.fkUsuario ?? ""),
       emailSiape: professor.emailSiape ?? "",
-      telefones: professor.telefones && professor.telefones.length > 0 ? professor.telefones : [""],
+      telefonesInstitucionais:
+        professor.telefonesInstitucionais?.length
+          ? professor.telefonesInstitucionais
+          : professor.telefones ?? [""],
+      telefonesPessoais: professor.telefonesPessoais?.length
+        ? professor.telefonesPessoais
+        : [""],
       emPGD: professor.emPGD ?? null,
       titulacao: professor.titulacao ?? "",
       escolaridade: professor.escolaridade ?? "",
     });
     setFeedback(null);
+    setFieldErrors({});
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token) return;
+    if (!token || submitting.current) return;
 
     const siape = form.siape.trim();
     const fkUsuario = String(form.fkUsuario).trim();
     const emailSiape = form.emailSiape.trim();
-    const telefones = form.telefones.map((value) => value.trim()).filter(Boolean);
+    const telefonesInstitucionais = form.telefonesInstitucionais.map((value) => value.trim()).filter(Boolean);
+    const telefonesPessoais = form.telefonesPessoais.map((value) => value.trim()).filter(Boolean);
 
     if (!siape || !fkUsuario) {
       setFeedback({ message: "SIAPE e usuário vinculados são obrigatórios.", ok: false });
       return;
     }
 
-    const body = {
+    if (emailSiape && !isValidEmail(emailSiape)) {
+      setFeedback({ message: "Informe um e-mail SIAPE válido.", ok: false });
+      setFieldErrors({ emailSiape: "E-mail SIAPE inválido." });
+      return;
+    }
+
+    const createBody: ProfessorPayload = {
       siape,
       fkUsuario,
-      emailSiape: emailSiape || undefined,
-      telefonesInstitucionais: telefones,
+      emailSiape: emailSiape || null,
+      telefonesInstitucionais,
+      telefonesPessoais,
       emPGD: form.emPGD,
+      titulacao: form.titulacao.trim() || null,
+      escolaridade: form.escolaridade.trim() || null,
+    };
+
+    const updateBody = {
+      ...createBody,
+      emailSiape: emailSiape || undefined,
       titulacao: form.titulacao.trim() || undefined,
       escolaridade: form.escolaridade.trim() || undefined,
     };
 
+    submitting.current = true;
     setSaving(true);
     setFeedback(null);
+    setFieldErrors({});
+    let successMessage: string;
     try {
       if (selectedId) {
         await api<unknown>(`/professores/${encodeURIComponent(selectedId)}`, {
           method: "PUT",
           token,
-          body: { ...body, id: selectedId },
+          body: { ...updateBody, id: selectedId },
         });
-        setFeedback({ message: "Professor atualizado com sucesso.", ok: true });
+        successMessage = "Professor atualizado com sucesso.";
       } else {
-        await api<unknown>("/professores", {
+        const response = await api<unknown>("/professores", {
           method: "POST",
           token,
-          body,
+          body: createBody,
         });
-        setFeedback({ message: "Professor cadastrado com sucesso.", ok: true });
+        successMessage = confirmsProfessorRole(response)
+          ? "Professor cadastrado e cargo PROFESSOR confirmado pela API."
+          : "Professor cadastrado. A resposta da API não confirmou se o usuário vinculado recebeu o cargo PROFESSOR.";
       }
 
       resetForm();
+      setFeedback({ message: successMessage, ok: true });
       if (token) await loadData(token);
     } catch (submitError) {
       const message =
-        submitError instanceof ApiError ? submitError.message : "Não foi possível salvar o professor.";
+        submitError instanceof ApiError
+          ? submitError.status === 403
+            ? "Sua sessão não tem a permissão necessária para cadastrar ou gerenciar professores."
+            : submitError.status === 409
+              ? "Já existe um professor com algum dado informado, como SIAPE ou e-mail SIAPE."
+              : submitError.message
+          : "Não foi possível salvar o professor.";
+      if (submitError instanceof ApiError && submitError.fieldErrors.length > 0) {
+        setFieldErrors(
+          Object.fromEntries(
+            submitError.fieldErrors.map(({ campo, mensagem }) => [campo, mensagem]),
+          ),
+        );
+      }
       setFeedback({ message, ok: false });
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   }
@@ -371,20 +456,32 @@ export default function ProfessoresScreen() {
             <input
               value={form.siape}
               onChange={(event) => updateField("siape", event.target.value)}
-              placeholder="1234567"
+              placeholder="123456"
+              aria-invalid={Boolean(fieldErrors.siape)}
             />
+            {fieldErrors.siape && <span className="field-error" role="alert">{fieldErrors.siape}</span>}
           </label>
 
           <label className="space-y-1">
             <span>Usuário vinculado</span>
-            <select value={form.fkUsuario} onChange={(event) => updateField("fkUsuario", event.target.value)}>
+            <select
+              value={form.fkUsuario}
+              onChange={(event) => updateField("fkUsuario", event.target.value)}
+              aria-invalid={Boolean(fieldErrors.fkUsuario)}
+            >
               <option value="">Selecione um usuário</option>
-              {users.map((user) => (
+              {availableUsers.map((user) => (
                 <option key={user.id} value={String(user.id)}>
-                  {user.nome || user.email || `Usuário ${user.id}`}
+                  {[user.nome, user.email, user.matricula ? `Matrícula ${user.matricula}` : ""]
+                    .filter(Boolean)
+                    .join(" · ") || `Usuário ${user.id}`}
                 </option>
               ))}
             </select>
+            {fieldErrors.fkUsuario && <span className="field-error" role="alert">{fieldErrors.fkUsuario}</span>}
+            {!userError && users.length > 0 && availableUsers.length === 0 && (
+              <span className="muted small">Todos os usuários carregados já possuem cadastro de professor.</span>
+            )}
             {userError && <span className="field-error" role="alert">{userError}</span>}
           </label>
 
@@ -394,7 +491,9 @@ export default function ProfessoresScreen() {
               value={form.emailSiape}
               onChange={(event) => updateField("emailSiape", event.target.value)}
               placeholder="nome@siape.gov.br"
+              aria-invalid={Boolean(fieldErrors.emailSiape)}
             />
+            {fieldErrors.emailSiape && <span className="field-error" role="alert">{fieldErrors.emailSiape}</span>}
           </label>
 
           <label className="space-y-1">
@@ -403,7 +502,9 @@ export default function ProfessoresScreen() {
               value={form.titulacao}
               onChange={(event) => updateField("titulacao", event.target.value)}
               placeholder="Doutor, Mestre, Especialista..."
+              aria-invalid={Boolean(fieldErrors.titulacao)}
             />
+            {fieldErrors.titulacao && <span className="field-error" role="alert">{fieldErrors.titulacao}</span>}
           </label>
 
           <label className="space-y-1 md:col-span-2">
@@ -412,26 +513,37 @@ export default function ProfessoresScreen() {
               value={form.escolaridade}
               onChange={(event) => updateField("escolaridade", event.target.value)}
               placeholder="Graduação, Pós-graduação, Mestrado..."
+              aria-invalid={Boolean(fieldErrors.escolaridade)}
             />
+            {fieldErrors.escolaridade && <span className="field-error" role="alert">{fieldErrors.escolaridade}</span>}
           </label>
 
           <fieldset className="md:col-span-2 space-y-2">
-            <legend>Telefones</legend>
-            {form.telefones.map((phone, index) => (
-              <div className="flex gap-2" key={`${index}-${phone}`}>
+            <legend>Telefones institucionais</legend>
+            {form.telefonesInstitucionais.map((phone, index) => (
+              <div className="flex gap-2" key={index}>
                 <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={phone}
                   onChange={(event) => {
-                    const nextPhones = [...form.telefones];
+                    const nextPhones = [...form.telefonesInstitucionais];
                     nextPhones[index] = maskPhone(event.target.value);
-                    handlePhones(nextPhones);
+                    handlePhones("telefonesInstitucionais", nextPhones);
                   }}
                   placeholder="(85) 99999-9999"
+                  aria-label={`Telefone institucional ${index + 1}`}
                 />
                 <button
                   className="btn btn-ghost"
                   type="button"
-                  onClick={() => handlePhones(form.telefones.filter((_, position) => position !== index))}
+                  onClick={() =>
+                    handlePhones(
+                      "telefonesInstitucionais",
+                      form.telefonesInstitucionais.filter((_, position) => position !== index),
+                    )
+                  }
                 >
                   Remover
                 </button>
@@ -440,9 +552,49 @@ export default function ProfessoresScreen() {
             <button
               className="btn btn-ghost"
               type="button"
-              onClick={() => handlePhones([...form.telefones, ""])}
+              onClick={() => handlePhones("telefonesInstitucionais", [...form.telefonesInstitucionais, ""])}
             >
-              + Adicionar telefone
+              + Adicionar telefone institucional
+            </button>
+          </fieldset>
+
+          <fieldset className="md:col-span-2 space-y-2">
+            <legend>Telefones pessoais</legend>
+            {form.telefonesPessoais.map((phone, index) => (
+              <div className="flex gap-2" key={index}>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(event) => {
+                    const nextPhones = [...form.telefonesPessoais];
+                    nextPhones[index] = maskPhone(event.target.value);
+                    handlePhones("telefonesPessoais", nextPhones);
+                  }}
+                  placeholder="(85) 99999-9999"
+                  aria-label={`Telefone pessoal ${index + 1}`}
+                />
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() =>
+                    handlePhones(
+                      "telefonesPessoais",
+                      form.telefonesPessoais.filter((_, position) => position !== index),
+                    )
+                  }
+                >
+                  Remover
+                </button>
+              </div>
+            ))}
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => handlePhones("telefonesPessoais", [...form.telefonesPessoais, ""])}
+            >
+              + Adicionar telefone pessoal
             </button>
           </fieldset>
 
@@ -538,7 +690,8 @@ export default function ProfessoresScreen() {
                   <div className="mt-4 rounded-lg bg-slate-50 p-4">
                     <p><strong>Usuário vinculado:</strong> {selectedProfessor.fkUsuario ?? "Não informado"}</p>
                     <p><strong>PGD:</strong> {selectedProfessor.emPGD === true ? "Sim" : selectedProfessor.emPGD === false ? "Não" : "Não informado"}</p>
-                    <p><strong>Telefones:</strong> {selectedProfessor.telefones?.join(", ") || "Nenhum"}</p>
+                    <p><strong>Telefones institucionais:</strong> {selectedProfessor.telefonesInstitucionais?.join(", ") || "Nenhum"}</p>
+                    <p><strong>Telefones pessoais:</strong> {selectedProfessor.telefonesPessoais?.join(", ") || "Nenhum"}</p>
                     <p><strong>Alocações em cursos:</strong> {selectedProfessor.alocacoes && selectedProfessor.alocacoes.length > 0 ? selectedProfessor.alocacoes.length : 0}</p>
                     {selectedProfessor.alocacoes && selectedProfessor.alocacoes.length > 0 ? (
                       <ul className="mt-2 list-disc pl-5">
