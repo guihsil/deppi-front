@@ -43,7 +43,6 @@ function fieldErrors(data: unknown): ApiFieldError[] {
     if (typeof item !== "object" || item === null) return [];
     const { campo, mensagem, path, message } = item as Record<string, unknown>;
     if (typeof campo === "string" && typeof mensagem === "string") return [{ campo, mensagem }];
-    // Formato de issue do zod usado pelo backend: { path: [...], message }
     if (Array.isArray(path) && typeof message === "string") {
       return [{ campo: path.join("."), mensagem: message }];
     }
@@ -61,7 +60,6 @@ export async function api<T>(
     response = await fetch(`${API_BASE}${path}`, {
       method,
       headers: {
-        // Em upload (FormData) o navegador define o Content-Type com o boundary.
         ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
@@ -75,6 +73,8 @@ export async function api<T>(
   } catch {
     throw new ApiError("Não foi possível falar com o servidor. Tente novamente.", 0);
   }
+
+  if (response.status === 204) return undefined as T;
 
   let data: unknown;
   try {
