@@ -9,6 +9,7 @@ const CLIENT_AUTH_PATHS = [
   '/403',
   '/admin',
   '/aluno',
+  '/cursos',
   '/deppi',
   '/perfil',
   '/professor',
