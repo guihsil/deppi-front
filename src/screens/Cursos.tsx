@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 
 type Institution = {
   id: string;
   nome: string;
-  cidade: string;
-  campus: string;
+  cidade?: string;
+  campus?: string;
 };
 
 type Course = {
@@ -24,7 +24,15 @@ type Course = {
   instituicao?: string;
   status?: string;
   diasSemana?: string[];
+  inscricoes?: number;
 };
+
+const COURSE_STATUSES = [
+  { value: "ANALISE", label: "Em análise" },
+  { value: "ANDAMENTO", label: "Em andamento" },
+  { value: "CONCLUIDO", label: "Concluído" },
+  { value: "FECHADO", label: "Fechado" },
+] as const;
 
 type FormState = {
   nome: string;
@@ -70,14 +78,50 @@ function readText(value: unknown): string {
   return "";
 }
 
+function institutionLoadErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return "Sua sessão expirou. Entre novamente para carregar as instituições.";
+    if (error.status === 403) {
+      return `${error.message} A API negou GET /instituicao para esta sessão; confirme se o backend permite a listagem ao cargo PROFESSOR.`;
+    }
+    return error.message;
+  }
+  return "Não foi possível carregar as instituições.";
+}
+
+function inputDate(value: unknown): string {
+  const text = readText(value);
+  const isoDate = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoDate) return isoDate[1];
+  const brazilianDate = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return brazilianDate ? `${brazilianDate[3]}-${brazilianDate[2]}-${brazilianDate[1]}` : text;
+}
+
+function inputTime(value: unknown): string {
+  const text = readText(value);
+  const time = text.match(/(?:T|\b)(\d{2}:\d{2})/);
+  return time?.[1] ?? text.slice(0, 5);
+}
+
 function normalizeInstitution(value: unknown): Institution | null {
   if (!isRecord(value)) return null;
-  const id = readText(value.id ?? value.codigo ?? value.instituicaoId ?? value._id);
-  const nome = readText(value.nome ?? value.nomeInstituicao ?? value.instituicaoNome);
-  const cidade = readText(value.cidade ?? value.localidade ?? value.cidadeNome);
-  const campus = readText(value.campus ?? value.nomeCampus ?? value.campusNome);
-  if (!id || !nome || !cidade || !campus) return null;
-  return { id, nome, cidade, campus };
+  const id = readText(value.id ?? value.codigo ?? value.instituicaoId ?? value.instituicao_id ?? value._id);
+  const nome = readText(
+    value.nome ??
+      value.nomeInstituicao ??
+      value.nome_instituicao ??
+      value.instituicaoNome ??
+      value.titulo,
+  );
+  const cidade = readText(value.cidade ?? value.localidade ?? value.cidadeNome ?? value.municipio);
+  const campus = readText(value.campus ?? value.nomeCampus ?? value.campusNome ?? value.unidade);
+  if (!id || !nome) return null;
+  return {
+    id,
+    nome,
+    ...(cidade ? { cidade } : {}),
+    ...(campus ? { campus } : {}),
+  };
 }
 
 function parseInstitutions(value: unknown): Institution[] {
@@ -87,9 +131,21 @@ function parseInstitutions(value: unknown): Institution[] {
       ? value.instituicoes
       : isRecord(value) && Array.isArray(value.data)
         ? value.data
-        : [];
+        : isRecord(value) && Array.isArray(value.content)
+          ? value.content
+          : null;
 
-  return rows.map((item) => normalizeInstitution(item)).filter((item): item is Institution => item !== null);
+  if (!rows) throw new ApiError("A API retornou um formato inválido para a lista de instituições.", 502);
+  return rows.map((item, index) => {
+    const institution = normalizeInstitution(item);
+    if (!institution) {
+      throw new ApiError(
+        `A API retornou dados inválidos para a instituição na posição ${index + 1}.`,
+        502,
+      );
+    }
+    return institution;
+  });
 }
 
 function normalizeCourse(value: unknown): Course | null {
@@ -99,12 +155,29 @@ function normalizeCourse(value: unknown): Course | null {
 
   const hours = Number(readText(value.carga_horaria ?? value.cargaHoraria ?? value.cargaHorariaTotal ?? "0"));
   const vagas = Number(readText(value.vagas ?? value.vagasDisponiveis ?? value.quantidadeVagas ?? "0"));
-  const dataInicio = readText(value.dataInicio ?? value.inicio ?? value.data_inicio);
-  const dataFim = readText(value.dataFim ?? value.fim ?? value.data_fim);
+  const dataInicio = inputDate(value.dataInicio ?? value.inicio ?? value.data_inicio);
+  const dataFim = inputDate(value.dataFim ?? value.fim ?? value.data_fim);
   const horario = isRecord(value.horario) ? value.horario : undefined;
-  const horarioInicio = readText(value.horarioInicio ?? value.horaInicio ?? (horario ? horario.inicio : undefined) ?? "");
-  const horarioFim = readText(value.horarioFim ?? value.horaFim ?? (horario ? horario.fim : undefined) ?? "");
-  const fkInstituicao = readText(value.fkInstituicao ?? value.instituicaoId ?? value.idInstituicao ?? "");
+  const horarioInicio = inputTime(value.horarioInicio ?? value.horaInicio ?? (horario ? horario.inicio : undefined) ?? "");
+  const horarioFim = inputTime(value.horarioFim ?? value.horaFim ?? (horario ? horario.fim : undefined) ?? "");
+  const institution = value.Instituicao ?? value.instituicao;
+  const fkInstituicao = readText(
+    value.fkInstituicao ??
+      value.instituicaoId ??
+      value.idInstituicao ??
+      (isRecord(institution) ? institution.id : undefined) ??
+      "",
+  );
+  const enrollmentCount =
+    isRecord(value._count) ? value._count.inscricao :
+      value.inscricao ?? value.inscricoes ?? value.quantidadeInscricoes ?? value.totalInscricoes;
+  const inscricoes = Array.isArray(enrollmentCount)
+    ? enrollmentCount.length
+    : typeof enrollmentCount === "number" && Number.isFinite(enrollmentCount)
+      ? enrollmentCount
+      : typeof enrollmentCount === "string" && enrollmentCount.trim() && Number.isFinite(Number(enrollmentCount))
+        ? Number(enrollmentCount)
+        : undefined;
 
   return {
     id,
@@ -116,9 +189,14 @@ function normalizeCourse(value: unknown): Course | null {
     horarioInicio,
     horarioFim,
     fkInstituicao,
-    instituicao: readText(value.instituicao ?? value.nomeInstituicao ?? value.instituicaoNome),
+    instituicao: readText(
+      (isRecord(institution) ? institution.nome : institution) ??
+        value.nomeInstituicao ??
+        value.instituicaoNome,
+    ),
     status: readText(value.status ?? value.situacao ?? value.estado),
     diasSemana: Array.isArray(value.diasSemana) ? value.diasSemana.map((day) => String(day)) : [],
+    inscricoes,
   };
 }
 
@@ -129,13 +207,22 @@ function parseCourses(value: unknown): Course[] {
       ? value.cursos
       : isRecord(value) && Array.isArray(value.data)
         ? value.data
-        : [];
+        : null;
 
-  return rows.map((item) => normalizeCourse(item)).filter((item): item is Course => item !== null);
+  if (!rows) throw new ApiError("A API retornou um formato inválido para a lista de cursos.", 502);
+  return rows.map((item, index) => {
+    const course = normalizeCourse(item);
+    if (!course) {
+      throw new ApiError(`A API retornou dados inválidos para o curso na posição ${index + 1}.`, 502);
+    }
+    return course;
+  });
 }
 
-export default function CursosScreen() {
-  const { token } = useAuth();
+export default function CursosScreen({ mode = "deppi" }: { mode?: "deppi" | "professor" }) {
+  const { token, cargos } = useAuth();
+  const isProfessorMode = mode === "professor";
+  const canManageStatus = !isProfessorMode && cargos.includes("DEPPI");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,9 +230,11 @@ export default function CursosScreen() {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<{ message: string; ok: boolean } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [actionCourseId, setActionCourseId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     if (!token) {
       setError("Sua sessão não está disponível. Entre novamente.");
       setLoading(false);
@@ -154,29 +243,55 @@ export default function CursosScreen() {
 
     setLoading(true);
     setError("");
+    if (!isProfessorMode) {
+      try {
+        const coursesResponse = await api<unknown>("/cursos", { token });
+        setCourses(parseCourses(coursesResponse));
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Não foi possível carregar os cursos.",
+        );
+      }
+    }
+
     try {
-      const [institutionsResponse, coursesResponse] = await Promise.all([
-        api<unknown>("/instituicao", { token }),
-        api<unknown>("/cursos", { token }),
-      ]);
+      const institutionsResponse = await api<unknown>("/instituicao", { token });
       setInstitutions(parseInstitutions(institutionsResponse));
-      setCourses(parseCourses(coursesResponse));
     } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "Não foi possível carregar as instituições e cursos.",
-      );
+      setError(institutionLoadErrorMessage(loadError));
     } finally {
       setLoading(false);
     }
-  }
+  }, [isProfessorMode, token]);
 
   useEffect(() => {
-    void loadData();
-  }, [token]);
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void loadData();
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadData]);
 
   const selectedCourse = useMemo(
     () => courses.find((course) => course.id === selectedId) ?? null,
     [courses, selectedId],
+  );
+
+  const reviewQueue = useMemo(
+    () => courses.filter((course) => course.status?.toUpperCase() === "ANALISE"),
+    [courses],
+  );
+
+  const filteredCourses = useMemo(
+    () =>
+      statusFilter
+        ? courses.filter((course) => course.status?.toUpperCase() === statusFilter)
+        : courses,
+    [courses, statusFilter],
   );
 
   function resetForm() {
@@ -241,6 +356,22 @@ export default function CursosScreen() {
       return;
     }
 
+    if (!dataInicio || !dataFim || !horarioInicio || !horarioFim) {
+      setFeedback({ message: "Informe as datas e os horários de início e fim.", ok: false });
+      return;
+    }
+
+    if (
+      selectedCourse?.inscricoes !== undefined &&
+      vagas < selectedCourse.inscricoes
+    ) {
+      setFeedback({
+        message: `Não é possível reduzir as vagas abaixo das ${selectedCourse.inscricoes} inscrições existentes.`,
+        ok: false,
+      });
+      return;
+    }
+
     if (dataFim && dataInicio && new Date(dataFim) < new Date(dataInicio)) {
       setFeedback({ message: "A data final deve ser maior ou igual à data inicial.", ok: false });
       return;
@@ -260,6 +391,7 @@ export default function CursosScreen() {
 
     setSaving(true);
     setFeedback(null);
+    let successMessage: string;
     try {
       if (selectedId) {
         await api<unknown>(`/cursos/${encodeURIComponent(selectedId)}`, {
@@ -267,24 +399,26 @@ export default function CursosScreen() {
           token,
           body: { ...body, id: selectedId },
         });
-        setFeedback({ message: "Curso atualizado com sucesso.", ok: true });
+        successMessage = "Curso atualizado com sucesso.";
       } else {
+        if (!isProfessorMode) return;
         await api<unknown>("/cursos", {
           method: "POST",
           token,
           body,
         });
-        setFeedback({
-          message: "Curso enviado para análise. O curso foi cadastrado como Em análise.",
-          ok: true,
-        });
+        successMessage = "Curso enviado para análise. A equipe DEPPI fará a avaliação.";
       }
 
       resetForm();
-      await loadData();
+      setFeedback({ message: successMessage, ok: true });
+      if (!isProfessorMode) await loadData();
     } catch (submitError) {
-      const message =
-        submitError instanceof ApiError ? submitError.message : "Não foi possível salvar o curso.";
+      const message = submitError instanceof ApiError
+        ? submitError.status === 403
+          ? `${submitError.message} A API negou esta operação para a sessão atual; confirme no backend se o cargo PROFESSOR pode criar cursos.`
+          : submitError.message
+        : "Não foi possível salvar o curso.";
       setFeedback({ message, ok: false });
     } finally {
       setSaving(false);
@@ -292,7 +426,7 @@ export default function CursosScreen() {
   }
 
   async function handleDelete(id: string) {
-    if (!token) return;
+    if (!token || !canManageStatus) return;
     const course = courses.find((item) => item.id === id);
     const confirmed = window.confirm(
       course ? `Deseja excluir o curso ${course.nome}?` : "Deseja excluir este curso?",
@@ -300,6 +434,8 @@ export default function CursosScreen() {
 
     if (!confirmed) return;
 
+    setActionCourseId(id);
+    setFeedback(null);
     try {
       await api<unknown>(`/cursos/${encodeURIComponent(id)}`, {
         method: "DELETE",
@@ -312,6 +448,32 @@ export default function CursosScreen() {
       const message =
         deleteError instanceof ApiError ? deleteError.message : "Não foi possível excluir o curso.";
       setFeedback({ message, ok: false });
+    } finally {
+      setActionCourseId(null);
+    }
+  }
+
+  async function handleApprove(course: Course) {
+    if (!token || !canManageStatus || course.status?.toUpperCase() !== "ANALISE") return;
+
+    setActionCourseId(course.id);
+    setFeedback(null);
+    try {
+      await api<unknown>(`/cursos/${encodeURIComponent(course.id)}`, {
+        method: "PUT",
+        token,
+        body: { status: "ANDAMENTO" },
+      });
+      setFeedback({ message: `O curso "${course.nome}" foi aprovado.`, ok: true });
+      await loadData();
+    } catch (approveError) {
+      const message =
+        approveError instanceof ApiError
+          ? approveError.message
+          : "Não foi possível aprovar o curso.";
+      setFeedback({ message, ok: false });
+    } finally {
+      setActionCourseId(null);
     }
   }
 
@@ -319,182 +481,303 @@ export default function CursosScreen() {
     <div className="space-y-6">
       <header className="page-head">
         <div>
-          <h1 className="page-title">Cadastro e edição de curso</h1>
-          <p className="muted">Valide regras de negócio, carregue instituições e mantenha o cadastro consistente.</p>
+          <h1 className="page-title">
+            {isProfessorMode ? "Cadastrar curso" : "Gestão de cursos"}
+          </h1>
+          <p className="muted">
+            {isProfessorMode
+              ? "Cadastre um curso para análise da equipe DEPPI."
+              : "Consulte os cursos e analise as solicitações de aprovação."}
+          </p>
         </div>
       </header>
 
-      <section className="card">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h2>{selectedId ? "Editar curso" : "Novo curso"}</h2>
-          {selectedId && (
-            <button className="btn btn-ghost" type="button" onClick={resetForm}>
-              Limpar formulário
-            </button>
-          )}
-        </div>
-
-        <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit} noValidate>
-          <label className="space-y-1 md:col-span-2">
-            <span>Nome do curso</span>
-            <input
-              value={form.nome}
-              onChange={(event) => updateField("nome", event.target.value)}
-              placeholder="Ex.: Programação para web"
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span>Instituição</span>
-            <select value={form.fkInstituicao} onChange={(event) => updateField("fkInstituicao", event.target.value)}>
-              <option value="">Selecione uma instituição</option>
-              {institutions.map((institution) => (
-                <option key={institution.id} value={institution.id}>
-                  {institution.nome} · {institution.campus}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1">
-            <span>Carga horária</span>
-            <input
-              type="number"
-              min="1"
-              value={form.cargaHoraria}
-              onChange={(event) => updateField("cargaHoraria", event.target.value)}
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span>Vagas</span>
-            <input
-              type="number"
-              min="1"
-              value={form.vagas}
-              onChange={(event) => updateField("vagas", event.target.value)}
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span>Data início</span>
-            <input
-              type="date"
-              value={form.dataInicio}
-              onChange={(event) => updateField("dataInicio", event.target.value)}
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span>Data fim</span>
-            <input
-              type="date"
-              value={form.dataFim}
-              onChange={(event) => updateField("dataFim", event.target.value)}
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span>Horário início</span>
-            <input
-              type="time"
-              value={form.horarioInicio}
-              onChange={(event) => updateField("horarioInicio", event.target.value)}
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span>Horário fim</span>
-            <input
-              type="time"
-              value={form.horarioFim}
-              onChange={(event) => updateField("horarioFim", event.target.value)}
-            />
-          </label>
-
-          <fieldset className="md:col-span-2 space-y-2">
-            <legend>Dias da semana</legend>
-            <div className="flex flex-wrap gap-3">
-              {DAYS.map((day) => (
-                <label key={day.value} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={form.diasSemana.includes(day.value)}
-                    onChange={() => toggleDay(day.value)}
-                    aria-label={`Selecionar ${day.label}`}
-                  />
-                  <span>{day.label}</span>
-                </label>
-              ))}
+      {canManageStatus && (
+        <section className="card" aria-labelledby="review-queue-title">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 id="review-queue-title">Fila de cursos em análise</h2>
+              <p className="muted">{reviewQueue.length} curso(s) aguardando aprovação.</p>
             </div>
-            <p className="muted">A seleção de dias fica preparada na interface e será ativada quando o backend permitir gravação.</p>
-          </fieldset>
-
-          <div className="md:col-span-2 flex items-center gap-3">
-            <button className="btn" type="submit" disabled={saving}>
-              {saving ? "Salvando..." : selectedId ? "Salvar alterações" : "Cadastrar curso"}
-            </button>
           </div>
-        </form>
-
-        {feedback && (
-          <p className={`mt-4 ${feedback.ok ? "text-green-700" : "text-red-700"}`} role="alert">
-            {feedback.message}
-          </p>
-        )}
-      </section>
-
-      <section className="card">
-        <h2>Cursos cadastrados</h2>
-
-        {loading ? (
-          <p className="muted mt-4">Carregando cursos…</p>
-        ) : error ? (
-          <p className="alert" role="alert">{error}</p>
-        ) : courses.length === 0 ? (
-          <p className="muted mt-4">Nenhum curso cadastrado.</p>
-        ) : (
-          <div className="mt-4 space-y-4">
-            {courses.map((course) => (
-              <article key={course.id} className="rounded-xl border border-slate-200 p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          {reviewQueue.length === 0 ? (
+            <p className="muted mt-4">Não há cursos aguardando aprovação.</p>
+          ) : (
+            <ul className="mt-4 divide-y divide-slate-200">
+              {reviewQueue.map((course) => (
+                <li
+                  key={course.id}
+                  className="flex flex-col gap-3 py-3 md:flex-row md:items-center md:justify-between"
+                >
                   <div>
-                    <h3 className="text-lg font-semibold">{course.nome}</h3>
+                    <h3 className="font-semibold">{course.nome}</h3>
                     <p className="muted">
-                      {course.instituicao ?? "Instituição não informada"} · {course.diasSemana?.length ? course.diasSemana.join(", ") : "Sem dias definidos"}
-                    </p>
-                    <p className="muted">
-                      {course.cargaHoraria}h · {course.vagas} vagas · {course.dataInicio || "-"} até {course.dataFim || "-"}
+                      {course.instituicao ?? "Instituição não informada"} · {course.vagas} vagas
+                      {course.inscricoes !== undefined ? ` · ${course.inscricoes} inscrições` : ""}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-800">
-                      {course.status ? course.status : "Em análise"}
-                    </span>
-                    <button className="btn btn-ghost" type="button" onClick={() => handleEdit(course)}>
-                      Editar
-                    </button>
-                    <button className="btn btn-ghost" type="button" onClick={() => void handleDelete(course.id)}>
-                      Excluir
-                    </button>
-                  </div>
-                </div>
-                {course.status && course.status.toLowerCase().includes("anal") && (
-                  <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-                    Curso em análise. Após aprovação da equipe DEPPI, ele será liberado para andamento.
-                  </p>
-                )}
-                {selectedCourse && selectedCourse.id === course.id && (
-                  <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">
-                    <p><strong>Horário:</strong> {course.horarioInicio || "-"} até {course.horarioFim || "-"}</p>
-                    <p><strong>Instituição ID:</strong> {course.fkInstituicao || "Não informado"}</p>
-                  </div>
-                )}
-              </article>
-            ))}
+                  <button
+                    className="btn"
+                    type="button"
+                    disabled={actionCourseId !== null}
+                    onClick={() => void handleApprove(course)}
+                  >
+                    {actionCourseId === course.id ? "Aprovando..." : "Aprovar"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {(isProfessorMode || selectedId !== null) && (
+        <section className="card">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <h2>{selectedId ? "Editar curso" : "Novo curso"}</h2>
+            {selectedId && (
+              <button className="btn btn-ghost" type="button" onClick={resetForm}>
+                Cancelar edição
+              </button>
+            )}
           </div>
-        )}
-      </section>
+
+          {isProfessorMode && loading && <p className="muted mt-4">Carregando instituições…</p>}
+          {isProfessorMode && error && (
+            <div className="alert" role="alert">
+              <p>{error}</p>
+              <button
+                className="btn btn-ghost mt-3"
+                type="button"
+                disabled={loading}
+                onClick={() => void loadData()}
+              >
+                Tentar carregar novamente
+              </button>
+            </div>
+          )}
+          {isProfessorMode && !loading && !error && institutions.length === 0 && (
+            <p className="muted mt-4">Não há instituições cadastradas para selecionar.</p>
+          )}
+          <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit} noValidate>
+            <label className="space-y-1 md:col-span-2">
+              <span>Nome do curso</span>
+              <input
+                value={form.nome}
+                onChange={(event) => updateField("nome", event.target.value)}
+                placeholder="Ex.: Programação para web"
+                required
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span>Instituição</span>
+              <select
+                value={form.fkInstituicao}
+                onChange={(event) => updateField("fkInstituicao", event.target.value)}
+                disabled={loading || institutions.length === 0}
+                required
+              >
+                <option value="">Selecione uma instituição</option>
+                {institutions.map((institution) => (
+                  <option key={institution.id} value={institution.id}>
+                    {institution.nome}
+                    {institution.campus ? ` · ${institution.campus}` : ""}
+                    {institution.cidade ? ` — ${institution.cidade}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-1">
+              <span>Carga horária</span>
+              <input
+                type="number"
+                min="1"
+                value={form.cargaHoraria}
+                onChange={(event) => updateField("cargaHoraria", event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span>Vagas</span>
+              <input
+                type="number"
+                min="1"
+                value={form.vagas}
+                onChange={(event) => updateField("vagas", event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span>Data início</span>
+              <input
+                type="date"
+                value={form.dataInicio}
+                onChange={(event) => updateField("dataInicio", event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span>Data fim</span>
+              <input
+                type="date"
+                value={form.dataFim}
+                onChange={(event) => updateField("dataFim", event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span>Horário início</span>
+              <input
+                type="time"
+                value={form.horarioInicio}
+                onChange={(event) => updateField("horarioInicio", event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span>Horário fim</span>
+              <input
+                type="time"
+                value={form.horarioFim}
+                onChange={(event) => updateField("horarioFim", event.target.value)}
+                required
+              />
+            </label>
+
+            <fieldset className="md:col-span-2 space-y-2">
+              <legend>Dias da semana</legend>
+              <div className="flex flex-wrap gap-3">
+                {DAYS.map((day) => (
+                  <label key={day.value} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.diasSemana.includes(day.value)}
+                      onChange={() => toggleDay(day.value)}
+                      aria-label={`Selecionar ${day.label}`}
+                    />
+                    <span>{day.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="muted">Selecione os dias da semana em que as aulas ocorrerão.</p>
+            </fieldset>
+
+            <div className="md:col-span-2 flex items-center gap-3">
+              <button className="btn" type="submit" disabled={saving || loading}>
+                {saving ? "Salvando..." : selectedId ? "Salvar alterações" : "Cadastrar curso"}
+              </button>
+            </div>
+          </form>
+
+          {feedback && (
+            <p className={`mt-4 ${feedback.ok ? "text-green-700" : "text-red-700"}`} role="alert">
+              {feedback.message}
+            </p>
+          )}
+        </section>
+      )}
+
+      {!isProfessorMode && (
+        <section className="card">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <h2 className="mb-0">Cursos cadastrados</h2>
+            <label className="flex items-center gap-2">
+              <span>Filtrar por status</span>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                aria-label="Filtrar cursos por status"
+              >
+                <option value="">Todos os status</option>
+                {COURSE_STATUSES.map((status) => (
+                  <option key={status.value} value={status.value}>{status.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {loading ? (
+            <p className="muted mt-4">Carregando cursos…</p>
+          ) : error ? (
+            <p className="alert" role="alert">{error}</p>
+          ) : filteredCourses.length === 0 ? (
+            <p className="muted mt-4">Nenhum curso cadastrado.</p>
+          ) : (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b-2 border-ink">
+                    <th className="p-3">Curso</th>
+                    <th className="p-3">Instituição</th>
+                    <th className="p-3">Período</th>
+                    <th className="p-3">Vagas / inscrições</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCourses.map((course) => (
+                    <tr key={course.id} className="border-b border-slate-200 align-top">
+                      <td className="p-3">
+                        <strong>{course.nome}</strong>
+                        <div className="muted">
+                          {course.cargaHoraria}h · {course.diasSemana?.length ? course.diasSemana.join(", ") : "Dias não informados"}
+                        </div>
+                      </td>
+                      <td className="p-3">{course.instituicao ?? "Não informada"}</td>
+                      <td className="p-3">{course.dataInicio || "-"} a {course.dataFim || "-"}</td>
+                      <td className="p-3">
+                        {course.vagas} vagas
+                        <div className="muted">
+                          {course.inscricoes === undefined ? "Inscrições não informadas" : `${course.inscricoes} inscrições`}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        {COURSE_STATUSES.find((status) => status.value === course.status?.toUpperCase())?.label ??
+                          course.status ?? "Não informado"}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-2">
+                          {canManageStatus && course.status?.toUpperCase() === "ANALISE" && (
+                            <button
+                              className="btn btn-ghost"
+                              type="button"
+                              disabled={actionCourseId !== null}
+                              onClick={() => void handleApprove(course)}
+                            >
+                              Aprovar
+                            </button>
+                          )}
+                          <button className="btn btn-ghost" type="button" onClick={() => handleEdit(course)}>
+                            Editar
+                          </button>
+                          {canManageStatus && (
+                            <button
+                              className="btn btn-ghost"
+                              type="button"
+                              disabled={actionCourseId !== null}
+                              onClick={() => void handleDelete(course.id)}
+                            >
+                              {actionCourseId === course.id ? "Excluindo..." : "Excluir"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
