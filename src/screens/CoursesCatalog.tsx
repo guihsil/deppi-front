@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
+import { readCourseCapacity } from "../lib/course-capacity";
 
 type Course = {
   id: string;
@@ -12,7 +14,8 @@ type Course = {
   cargaHoraria: string;
   periodo: string;
   horario: string;
-  vagasDisponiveis: number;
+  vagasDisponiveis?: number;
+  vagasTotais?: number;
   status: string;
 };
 
@@ -76,15 +79,9 @@ function parseCourse(value: unknown, index: number): Course {
 
   const nome = readFirstText(value, ["nome", "titulo"]);
   const status = readFirstText(value, ["status", "situacao"]);
-  const vacanciesValue = value.vagasDisponiveis;
-  const vagasDisponiveis =
-    typeof vacanciesValue === "number"
-      ? vacanciesValue
-      : typeof vacanciesValue === "string" && vacanciesValue.trim()
-        ? Number(vacanciesValue)
-        : Number.NaN;
+  const capacity = readCourseCapacity(value);
 
-  if (!nome || !status || !Number.isFinite(vagasDisponiveis)) {
+  if (!nome || !status || (capacity.availableSeats === undefined && capacity.totalSeats === undefined)) {
     throw new ApiError(
       `A API retornou dados incompletos para o curso na posição ${index + 1}.`,
       502,
@@ -105,8 +102,11 @@ function parseCourse(value: unknown, index: number): Course {
     startDate && endDate
       ? `${startDate} a ${endDate}`
       : startDate ?? endDate ?? "Não informado";
-  const cargaHoraria = readFirstText(value, ["cargaHoraria", "cargaHorariaTotal"]);
-  const id = readFirstText(value, ["id", "codigo"]) ?? `${nome}-${index}`;
+  const cargaHoraria = readFirstText(value, ["cargaHoraria", "cargaHorariaTotal", "carga_horaria"]);
+  const id = readFirstText(value, ["id", "codigo", "cursoId"]);
+  if (!id) {
+    throw new ApiError(`A API não retornou o identificador do curso na posição ${index + 1}.`, 502);
+  }
 
   return {
     id,
@@ -120,7 +120,8 @@ function parseCourse(value: unknown, index: number): Course {
       : "Não informado",
     periodo: period,
     horario: readSchedule(value),
-    vagasDisponiveis,
+    vagasDisponiveis: capacity.availableSeats,
+    vagasTotais: capacity.totalSeats,
     status: status.trim().toUpperCase(),
   };
 }
@@ -172,7 +173,7 @@ function CourseCard({ course }: { course: Course }) {
     <article className="card course-card">
       <div className="course-card-heading">
         <h2>{course.nome}</h2>
-        {course.vagasDisponiveis <= 0 && (
+        {course.vagasDisponiveis === 0 && (
           <span className="course-sold-out">Esgotado</span>
         )}
       </div>
@@ -192,10 +193,17 @@ function CourseCard({ course }: { course: Course }) {
         </div>
       </dl>
       <p className="course-vacancies">
-        {course.vagasDisponiveis <= 0
-          ? "Não há vagas disponíveis"
-          : `${course.vagasDisponiveis.toLocaleString("pt-BR")} vagas disponíveis`}
+        {course.vagasDisponiveis !== undefined
+          ? course.vagasDisponiveis === 0
+            ? "Não há vagas disponíveis"
+            : `${course.vagasDisponiveis.toLocaleString("pt-BR")} vagas disponíveis`
+          : course.vagasTotais !== undefined
+            ? `${course.vagasTotais.toLocaleString("pt-BR")} vagas totais; disponibilidade não informada`
+            : "Disponibilidade de vagas não informada"}
       </p>
+      <Link href={`/cursos/${encodeURIComponent(course.id)}`} className="btn btn-ghost course-detail-link">
+        Ver detalhes
+      </Link>
     </article>
   );
 }
