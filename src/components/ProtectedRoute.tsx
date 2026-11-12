@@ -12,13 +12,18 @@ export default function ProtectedRoute({
   roles: readonly Role[];
   children: React.ReactNode;
 }) {
-  const { cargos } = useAuth();
+  const { cargos, ready } = useAuth();
   const router = useRouter();
-  const allowed = roles.some((role) => cargos.includes(role));
+  const allowed = ready && roles.some((role) => cargos.includes(role));
 
   useEffect(() => {
-    if (!allowed) router.replace("/403");
-  }, [allowed, router]);
+    if (ready && !allowed) router.replace("/403");
+  }, [ready, allowed, router]);
 
-  return allowed ? children : <p className="center-msg">Verificando permissões…</p>;
+  if (allowed) return children;
+  return (
+    <p className="center-msg" role="status">
+      {ready ? "Verificando permissões…" : "Carregando sessão…"}
+    </p>
+  );
 }
