@@ -5,6 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import { readCourseCapacity } from "../lib/course-capacity";
+import {
+  enrollmentDraftsUpdatedEvent,
+  listEnrollmentDrafts,
+  type EnrollmentDraft,
+} from "../lib/enrollment-drafts";
 
 type Course = {
   id: string;
@@ -211,11 +216,33 @@ function CourseCard({ course }: { course: Course }) {
 export default function CoursesCatalog() {
   const { token } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
+  const [drafts, setDrafts] = useState<EnrollmentDraft[]>([]);
+  const [draftError, setDraftError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState("");
   const [institutionFilter, setInstitutionFilter] = useState("");
+
+  useEffect(() => {
+    if (!token) return;
+    const loadDrafts = () => {
+      try {
+        setDrafts(listEnrollmentDrafts(token).filter((draft) => draft.etapa !== "RESUMO"));
+        setDraftError("");
+      } catch (loadError) {
+        setDraftError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Não foi possível recuperar as inscrições em andamento.",
+        );
+      }
+    };
+    loadDrafts();
+    const eventName = enrollmentDraftsUpdatedEvent();
+    window.addEventListener(eventName, loadDrafts);
+    return () => window.removeEventListener(eventName, loadDrafts);
+  }, [token]);
 
   useEffect(() => {
     let active = true;
@@ -288,6 +315,27 @@ export default function CoursesCatalog() {
         </div>
       </header>
 
+      {draftError ? (
+        <p className="alert" role="alert">{draftError}</p>
+      ) : drafts.length > 0 ? (
+        <section className="card enrollment-resume" aria-labelledby="enrollment-resume-title">
+          <h2 id="enrollment-resume-title">Inscrições em andamento</h2>
+          <ul>
+            {drafts.map((draft) => (
+              <li key={draft.id}>
+                <span>{draft.cursoNome ?? "Inscrição"} · etapa: {stepLabel(draft.etapa)}</span>
+                <Link
+                  className="btn btn-ghost"
+                  href={`/aluno/inscricoes/${encodeURIComponent(draft.id)}/${draft.etapa.toLowerCase()}`}
+                >
+                  Retomar
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {error ? (
         <section className="card courses-message">
           <p className="alert" role="alert">{error}</p>
@@ -349,4 +397,15 @@ export default function CoursesCatalog() {
       )}
     </div>
   );
+}
+
+function stepLabel(step: EnrollmentDraft["etapa"]): string {
+  switch (step) {
+    case "RENDA":
+      return "renda familiar";
+    case "DOCUMENTOS":
+      return "documentos";
+    case "RESUMO":
+      return "resumo";
+  }
 }
