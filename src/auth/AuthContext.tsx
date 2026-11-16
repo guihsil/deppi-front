@@ -12,6 +12,7 @@ import { ApiError, api } from "../api";
 import { isRole, type Role } from "../roles";
 
 type Usuario = {
+  id?: string;
   nome?: string;
   cargos: Role[];
 };
@@ -58,6 +59,7 @@ function parseSession(value: unknown): Session | null {
   return {
     token: value.token,
     usuario: {
+      ...(typeof value.usuario.id === "string" ? { id: value.usuario.id } : {}),
       ...(typeof value.usuario.nome === "string" ? { nome: value.usuario.nome } : {}),
       cargos,
     },

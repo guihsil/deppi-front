@@ -797,7 +797,8 @@
     list-style: none;
   }
 
-  .enrollment-resume li {
+  .enrollment-resume li,
+  .enrollment-file-list li {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -823,8 +824,28 @@
   }
 
   .enrollment-file-list {
-    padding-left: 1.25rem;
-    list-style: disc;
+    width: 100%;
+  }
+
+  .enrollment-file-details {
+    display: grid;
+    min-width: min(100%, 240px);
+    flex: 1;
+    gap: 0.5rem;
+  }
+
+  .enrollment-file-details strong {
+    overflow-wrap: anywhere;
+  }
+
+  .enrollment-file-details label {
+    max-width: 420px;
+  }
+
+  .enrollment-file-status {
+    color: var(--color-ink-secondary);
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
   }
 
   .course-detail-alert,
