@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import { readCourseCapacity } from "../lib/course-capacity";
+import {
+  getEnrollmentDraftForCourse,
+  saveEnrollmentDraft,
+  type EnrollmentDraft,
+} from "../lib/enrollment-drafts";
 
 const COURSE_STATUSES = ["ANALISE", "ANDAMENTO", "CONCLUIDO", "FECHADO"] as const;
 type CourseStatus = (typeof COURSE_STATUSES)[number];
@@ -159,12 +165,15 @@ function normalizeCourseDetail(value: unknown): CourseDetailModel {
 
 export default function CourseDetail() {
   const params = useParams<{ id?: string | string[] }>();
+  const router = useRouter();
   const routeId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const { token, cargos } = useAuth();
   const [course, setCourse] = useState<CourseDetailModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [enrollmentNotice, setEnrollmentNotice] = useState("");
+  const [enrollmentDraft, setEnrollmentDraft] = useState<EnrollmentDraft>();
+  const [enrolling, setEnrolling] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -194,7 +203,18 @@ export default function CourseDetail() {
       try {
         const response = await api<unknown>(`/cursos/${encodeURIComponent(routeId)}`, { token });
         const data = normalizeCourseDetail(response);
-        if (active) setCourse(data);
+        if (active) {
+          setCourse(data);
+          try {
+            setEnrollmentDraft(getEnrollmentDraftForCourse(token, routeId));
+          } catch (draftError) {
+            setEnrollmentNotice(
+              draftError instanceof Error
+                ? draftError.message
+                : "Não foi possível recuperar o progresso salvo da inscrição.",
+            );
+          }
+        }
       } catch (loadError) {
         if (active) {
           const message =
@@ -216,6 +236,57 @@ export default function CourseDetail() {
       active = false;
     };
   }, [routeId, token]);
+
+  async function startOrResumeEnrollment() {
+    if (!token || !routeId || !course) {
+      setEnrollmentNotice("Sua sessão ou os dados do curso não estão disponíveis. Tente novamente.");
+      return;
+    }
+
+    setEnrollmentNotice("");
+    setEnrolling(true);
+    try {
+      const savedDraft = getEnrollmentDraftForCourse(token, routeId);
+      if (savedDraft) {
+        setEnrollmentDraft(savedDraft);
+        router.push(
+          savedDraft.etapa === "RESUMO"
+            ? `/aluno/inscricoes/${encodeURIComponent(savedDraft.id)}/resumo`
+            : `/aluno/inscricoes/${encodeURIComponent(savedDraft.id)}/${savedDraft.etapa.toLowerCase()}`,
+        );
+        return;
+      }
+
+      const response = await api<unknown>("/inscricoes", {
+        method: "POST",
+        token,
+        body: { cursoId: routeId },
+      });
+      const inscricaoId = readEnrollmentId(response);
+      const draft: EnrollmentDraft = {
+        id: inscricaoId,
+        cursoId: routeId,
+        cursoNome: course.nome,
+        etapa: "RENDA",
+        updatedAt: new Date().toISOString(),
+      };
+
+      try {
+        saveEnrollmentDraft(token, draft);
+      } catch (draftError) {
+        setEnrollmentNotice(
+          draftError instanceof Error
+            ? `A inscrição foi criada, mas não foi possível salvar o progresso: ${draftError.message}`
+            : "A inscrição foi criada, mas não foi possível salvar o progresso.",
+        );
+      }
+      router.push(`/aluno/inscricoes/${encodeURIComponent(inscricaoId)}/renda`);
+    } catch (submitError) {
+      setEnrollmentNotice(enrollmentErrorMessage(submitError, "inscrição"));
+    } finally {
+      setEnrolling(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -353,11 +424,17 @@ export default function CourseDetail() {
                 <button
                   type="button"
                   className="btn"
-                  disabled={!canEnroll}
-                  onClick={() => setEnrollmentNotice("A inscrição ainda não está integrada à API.")}
+                  disabled={(!canEnroll && !enrollmentDraft) || enrolling}
+                  onClick={() => void startOrResumeEnrollment()}
                 >
-                  {canEnroll
-                    ? "Inscrever-se"
+                  {enrolling
+                    ? "Aguarde…"
+                    : enrollmentDraft
+                      ? enrollmentDraft.etapa === "RESUMO"
+                        ? "Ver resumo da inscrição"
+                        : "Continuar inscrição"
+                      : canEnroll
+                        ? "Inscrever-se"
                     : noVacancies
                       ? "Sem vagas"
                       : "Inscrições indisponíveis"}
@@ -372,4 +449,57 @@ export default function CourseDetail() {
       </article>
     </div>
   );
+}
+
+function readEnrollmentId(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ApiError("A API criou a inscrição, mas não retornou o identificador.", 502);
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["id", "inscricaoId"]) {
+    if (typeof record[key] === "string" && record[key]) return record[key] as string;
+  }
+
+  for (const key of ["inscricao", "data", "resultado"]) {
+    if (record[key] !== undefined) {
+      const id = findEnrollmentId(record[key]);
+      if (id) return id;
+    }
+  }
+  throw new ApiError("A API criou a inscrição, mas não retornou o identificador.", 502);
+}
+
+function findEnrollmentId(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ["id", "inscricaoId"]) {
+    if (typeof record[key] === "string" && record[key]) return record[key] as string;
+  }
+  for (const key of ["inscricao", "data", "resultado"]) {
+    const id = findEnrollmentId(record[key]);
+    if (id) return id;
+  }
+  return undefined;
+}
+
+function enrollmentErrorMessage(error: unknown, action: string): string {
+  if (!(error instanceof ApiError)) {
+    return error instanceof Error ? error.message : `Não foi possível realizar a ${action}.`;
+  }
+  if (error.status === 400) {
+    if (error.message !== "Algo deu errado.") {
+      return `Não foi possível realizar a ${action}: ${error.message}`;
+    }
+    return "Não foi possível concluir a inscrição. Verifique se já há uma inscrição ativa neste curso e se ainda existem vagas.";
+  }
+  if (error.status === 404) {
+    if (error.message !== "Algo deu errado.") {
+      return error.message;
+    }
+    return "Curso não encontrado ou indisponível para inscrição.";
+  }
+  return error.message;
 }

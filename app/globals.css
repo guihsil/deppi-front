@@ -779,6 +779,54 @@
     font-size: 0.9rem;
   }
 
+  .enrollment-resume {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .enrollment-resume h2 {
+    margin: 0;
+  }
+
+  .enrollment-resume ul,
+  .enrollment-file-list {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .enrollment-resume li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-top: 1px solid var(--color-line);
+    padding-top: 0.75rem;
+  }
+
+  .enrollment-summary {
+    display: grid;
+    justify-items: start;
+    gap: 1rem;
+  }
+
+  .enrollment-summary h2,
+  .enrollment-summary p {
+    margin: 0;
+  }
+
+  .enrollment-summary .course-detail-meta {
+    width: 100%;
+  }
+
+  .enrollment-file-list {
+    padding-left: 1.25rem;
+    list-style: disc;
+  }
+
   .course-detail-alert,
   .course-detail-loading {
     display: grid;
