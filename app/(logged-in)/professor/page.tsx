@@ -1,10 +1,10 @@
 import ProtectedRoute from "@/src/components/ProtectedRoute";
-import Placeholder from "@/src/screens/Placeholder";
+import ProfessorCourses from "@/src/screens/ProfessorCourses";
 
 export default function ProfessorPage() {
   return (
     <ProtectedRoute roles={["PROFESSOR"]}>
-      <Placeholder />
+      <ProfessorCourses />
     </ProtectedRoute>
   );
 }

@@ -551,6 +551,10 @@
     gap: 0.9rem;
   }
 
+  .course-card-cover {
+    height: 150px;
+  }
+
   .course-card-heading {
     display: flex;
     align-items: flex-start;
@@ -608,6 +612,124 @@
     border-top: 1px solid var(--color-line);
     padding-top: 0.75rem;
     font-weight: 700;
+  }
+
+  .course-cover {
+    display: block;
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 2px solid var(--color-ink);
+    background: #eef3ff;
+  }
+
+  .course-cover-placeholder {
+    display: grid;
+    place-items: center;
+    color: var(--color-ink-secondary);
+    background: linear-gradient(135deg, #eef3ff, #f9fafb);
+    font-weight: 700;
+  }
+
+  .professor-page {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .professor-page-message {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .professor-course-list {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .professor-course-card {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .professor-course-header {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .professor-course-cover {
+    height: 150px;
+  }
+
+  .professor-course-meta {
+    display: grid;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  .professor-course-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .professor-course-title-row h2 {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .course-status-badge {
+    border: 2px solid var(--color-ink);
+    border-radius: 999px;
+    padding: 0.2rem 0.75rem;
+    background: #fff8d8;
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .professor-course-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    color: var(--color-ink-secondary);
+    font-weight: 700;
+  }
+
+  .professor-toggle {
+    justify-self: start;
+  }
+
+  .professor-students {
+    display: grid;
+    gap: 0.75rem;
+    border-top: 1px solid var(--color-line);
+    padding-top: 0.75rem;
+  }
+
+  .professor-students h3 {
+    margin: 0;
+    font: 800 1.05rem var(--font-heading);
+  }
+
+  .professor-students ul {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding-left: 1.1rem;
+  }
+
+  .professor-students li {
+    display: grid;
+    gap: 0.15rem;
+  }
+
+  .professor-students small {
+    color: var(--color-ink-secondary);
   }
 
   .courses-empty,
