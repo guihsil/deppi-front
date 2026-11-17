@@ -10,6 +10,9 @@ type ApiOptions = {
 type ApiErrorBody = {
   mensagem?: unknown;
   error?: unknown;
+  message?: unknown;
+  detail?: unknown;
+  title?: unknown;
   erros?: unknown;
 };
 
@@ -31,6 +34,9 @@ function errorMessage(data: unknown): string | undefined {
   const body = data as ApiErrorBody;
   if (typeof body.mensagem === "string") return body.mensagem;
   if (typeof body.error === "string") return body.error;
+  if (typeof body.message === "string") return body.message;
+  if (typeof body.detail === "string") return body.detail;
+  if (typeof body.title === "string") return body.title;
   if (typeof (body as { erro?: unknown }).erro === "string") return (body as { erro: string }).erro;
   return undefined;
 }
@@ -77,12 +83,25 @@ export async function api<T>(
   if (response.status === 204) return undefined as T;
 
   let data: unknown;
+  let responseText: string | null = null;
   try {
-    data = await response.json();
+    responseText = await response.text();
   } catch {
     if (response.ok) {
-      throw new ApiError("O servidor retornou uma resposta inválida.", response.status);
+      throw new ApiError("Não foi possível ler a resposta do servidor.", response.status);
     }
+  }
+
+  if (responseText !== null) {
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      if (response.ok) {
+        throw new ApiError("O servidor retornou uma resposta inválida.", response.status);
+      }
+      data = responseText.trim() ? { message: responseText.trim() } : null;
+    }
+  } else {
     data = null;
   }
 
@@ -93,7 +112,9 @@ export async function api<T>(
     const fields = fieldErrors(data);
     throw new ApiError(
       errorMessage(data) ??
-        (fields.length > 0 ? "Corrija os campos destacados." : "Algo deu errado."),
+        (fields.length > 0
+          ? "Corrija os campos destacados."
+          : `Algo deu errado (HTTP ${response.status}).`),
       response.status,
       fields,
     );
