@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import CourseCover from "../components/CourseCover";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import { readCourseCapacity } from "../lib/course-capacity";
@@ -22,6 +23,7 @@ type Course = {
   vagasDisponiveis?: number;
   vagasTotais?: number;
   status: string;
+  capaUrl?: string | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -112,6 +114,18 @@ function parseCourse(value: unknown, index: number): Course {
   if (!id) {
     throw new ApiError(`A API não retornou o identificador do curso na posição ${index + 1}.`, 502);
   }
+  const records = value as Record<string, unknown>;
+  const nestedCourse = isRecord(value.curso) ? value.curso : undefined;
+  const capaUrl =
+    readText(records.capa) ??
+    readText(records.capaUrl) ??
+    readText(records.cover) ??
+    readText(records.imagem) ??
+    readText(records.imagemUrl) ??
+    readText(nestedCourse?.capa) ??
+    readText(nestedCourse?.capaUrl) ??
+    readText(records.publicUrl) ??
+    null;
 
   return {
     id,
@@ -128,6 +142,7 @@ function parseCourse(value: unknown, index: number): Course {
     vagasDisponiveis: capacity.availableSeats,
     vagasTotais: capacity.totalSeats,
     status: status.trim().toUpperCase(),
+    capaUrl,
   };
 }
 
@@ -147,6 +162,38 @@ function parseCourses(value: unknown): Course[] {
   }
 
   return courses.map(parseCourse);
+}
+
+async function resolveCourseCover(token: string, courseId: string): Promise<string | null> {
+  try {
+    const response = await api<unknown>(`/cursos/${encodeURIComponent(courseId)}/capa`, { token });
+    if (!isRecord(response)) return null;
+
+    const direct =
+      readText(response.capa) ??
+      readText(response.capaUrl) ??
+      readText(response.url) ??
+      readText(response.publicUrl) ??
+      readText(response.imagem) ??
+      readText(response.src);
+
+    if (direct) return direct;
+
+    if (isRecord(response.data)) {
+      const nested =
+        readText(response.data.capa) ??
+        readText(response.data.capaUrl) ??
+        readText(response.data.url) ??
+        readText(response.data.publicUrl) ??
+        readText(response.data.imagem) ??
+        readText(response.data.src);
+      if (nested) return nested;
+    }
+  } catch {
+    // A capa pode ser opcional; o placeholder cobre esse caso.
+  }
+
+  return null;
 }
 
 function normalizeSearch(value: string): string {
@@ -176,6 +223,11 @@ function CourseCard({ course }: { course: Course }) {
 
   return (
     <article className="card course-card">
+      <CourseCover
+        src={course.capaUrl ?? null}
+        alt={`Capa do curso ${course.nome}`}
+        className="course-card-cover"
+      />
       <div className="course-card-heading">
         <h2>{course.nome}</h2>
         {course.vagasDisponiveis === 0 && (
@@ -260,7 +312,13 @@ export default function CoursesCatalog() {
       try {
         const response = await api<unknown>("/cursos/", { token });
         const result = parseCourses(response);
-        if (active) setCourses(result);
+        const hydrated = await Promise.all(
+          result.map(async (course) => ({
+            ...course,
+            capaUrl: course.capaUrl ?? (await resolveCourseCover(token, course.id)),
+          })),
+        );
+        if (active) setCourses(hydrated);
       } catch (loadError) {
         if (active) {
           setError(
