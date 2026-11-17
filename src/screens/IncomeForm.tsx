@@ -2,9 +2,11 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import { digitsToCents, formatCurrency, maskCurrency } from "../lib/masks";
+import { updateEnrollmentDraft } from "../lib/enrollment-drafts";
 
 type Errors = { rendaFamiliar?: string; numeroPessoas?: string };
 
@@ -15,6 +17,7 @@ const FIELD_MAP: Record<string, keyof Errors> = {
 
 export default function IncomeForm({ inscricaoId }: { inscricaoId: string }) {
   const { token } = useAuth();
+  const router = useRouter();
   const [renda, setRenda] = useState("");
   const [pessoas, setPessoas] = useState("");
   const [errors, setErrors] = useState<Errors>({});
@@ -59,9 +62,18 @@ export default function IncomeForm({ inscricaoId }: { inscricaoId: string }) {
         body: { rendaFamiliar: rendaValue, numeroPessoas: pessoasValue },
       });
       setFeedback({
-        message: "Renda enviada com sucesso. Você pode reenviar para corrigir os valores.",
+        message: "Renda enviada com sucesso. Continuando para o envio de documentos…",
         isError: false,
       });
+      try {
+        updateEnrollmentDraft(token, inscricaoId, "DOCUMENTOS");
+      } catch {
+        setFeedback({
+          message: "Renda enviada. O progresso não pôde ser salvo localmente; continue para os documentos.",
+          isError: false,
+        });
+      }
+      router.push(`/aluno/inscricoes/${encodeURIComponent(inscricaoId)}/documentos`);
     } catch (error) {
       if (error instanceof ApiError && error.fieldErrors.length > 0) {
         const apiErrors: Errors = {};
@@ -72,7 +84,7 @@ export default function IncomeForm({ inscricaoId }: { inscricaoId: string }) {
         setErrors(apiErrors);
       }
       setFeedback({
-        message: error instanceof Error ? error.message : "Não foi possível enviar a renda.",
+        message: getIncomeErrorMessage(error),
         isError: true,
       });
     } finally {
@@ -89,7 +101,7 @@ export default function IncomeForm({ inscricaoId }: { inscricaoId: string }) {
             Informe a renda bruta mensal da sua família e o número de pessoas que moram com você.
           </p>
         </div>
-        <Link className="btn btn-ghost" href="/aluno">Voltar</Link>
+        <Link className="btn btn-ghost" href="/aluno">Voltar para cursos</Link>
       </header>
 
       {feedback && (
@@ -154,4 +166,21 @@ export default function IncomeForm({ inscricaoId }: { inscricaoId: string }) {
       </form>
     </div>
   );
+}
+
+function getIncomeErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) {
+    return error instanceof Error ? error.message : "Não foi possível enviar a renda.";
+  }
+  if (error.status === 400) {
+    return error.message === "Algo deu errado."
+      ? "Não foi possível salvar a renda informada. Confira os dados e tente novamente."
+      : `Não foi possível salvar a renda: ${error.message}`;
+  }
+  if (error.status === 404) {
+    return error.message === "Algo deu errado."
+      ? "Inscrição não encontrada. Volte ao catálogo e retome o fluxo de inscrição."
+      : error.message;
+  }
+  return error.message;
 }
