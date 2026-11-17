@@ -1,9 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import CourseCover from "../components/CourseCover";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
+import { readCourseCapacity } from "../lib/course-capacity";
+import {
+  enrollmentDraftsUpdatedEvent,
+  listEnrollmentDrafts,
+  type EnrollmentDraft,
+} from "../lib/enrollment-drafts";
 
 type Course = {
   id: string;
@@ -13,7 +20,8 @@ type Course = {
   cargaHoraria: string;
   periodo: string;
   horario: string;
-  vagasDisponiveis: number;
+  vagasDisponiveis?: number;
+  vagasTotais?: number;
   status: string;
   capaUrl?: string | null;
 };
@@ -78,15 +86,9 @@ function parseCourse(value: unknown, index: number): Course {
 
   const nome = readFirstText(value, ["nome", "titulo"]);
   const status = readFirstText(value, ["status", "situacao"]);
-  const vacanciesValue = value.vagasDisponiveis;
-  const vagasDisponiveis =
-    typeof vacanciesValue === "number"
-      ? vacanciesValue
-      : typeof vacanciesValue === "string" && vacanciesValue.trim()
-        ? Number(vacanciesValue)
-        : Number.NaN;
+  const capacity = readCourseCapacity(value);
 
-  if (!nome || !status || !Number.isFinite(vagasDisponiveis)) {
+  if (!nome || !status || (capacity.availableSeats === undefined && capacity.totalSeats === undefined)) {
     throw new ApiError(
       `A API retornou dados incompletos para o curso na posição ${index + 1}.`,
       502,
@@ -107,8 +109,11 @@ function parseCourse(value: unknown, index: number): Course {
     startDate && endDate
       ? `${startDate} a ${endDate}`
       : startDate ?? endDate ?? "Não informado";
-  const cargaHoraria = readFirstText(value, ["cargaHoraria", "cargaHorariaTotal"]);
-  const id = readFirstText(value, ["id", "codigo"]) ?? `${nome}-${index}`;
+  const cargaHoraria = readFirstText(value, ["cargaHoraria", "cargaHorariaTotal", "carga_horaria"]);
+  const id = readFirstText(value, ["id", "codigo", "cursoId"]);
+  if (!id) {
+    throw new ApiError(`A API não retornou o identificador do curso na posição ${index + 1}.`, 502);
+  }
   const records = value as Record<string, unknown>;
   const nestedCourse = isRecord(value.curso) ? value.curso : undefined;
   const capaUrl =
@@ -134,7 +139,8 @@ function parseCourse(value: unknown, index: number): Course {
       : "Não informado",
     periodo: period,
     horario: readSchedule(value),
-    vagasDisponiveis,
+    vagasDisponiveis: capacity.availableSeats,
+    vagasTotais: capacity.totalSeats,
     status: status.trim().toUpperCase(),
     capaUrl,
   };
@@ -224,7 +230,7 @@ function CourseCard({ course }: { course: Course }) {
       />
       <div className="course-card-heading">
         <h2>{course.nome}</h2>
-        {course.vagasDisponiveis <= 0 && (
+        {course.vagasDisponiveis === 0 && (
           <span className="course-sold-out">Esgotado</span>
         )}
       </div>
@@ -244,10 +250,17 @@ function CourseCard({ course }: { course: Course }) {
         </div>
       </dl>
       <p className="course-vacancies">
-        {course.vagasDisponiveis <= 0
-          ? "Não há vagas disponíveis"
-          : `${course.vagasDisponiveis.toLocaleString("pt-BR")} vagas disponíveis`}
+        {course.vagasDisponiveis !== undefined
+          ? course.vagasDisponiveis === 0
+            ? "Não há vagas disponíveis"
+            : `${course.vagasDisponiveis.toLocaleString("pt-BR")} vagas disponíveis`
+          : course.vagasTotais !== undefined
+            ? `${course.vagasTotais.toLocaleString("pt-BR")} vagas totais; disponibilidade não informada`
+            : "Disponibilidade de vagas não informada"}
       </p>
+      <Link href={`/cursos/${encodeURIComponent(course.id)}`} className="btn btn-ghost course-detail-link">
+        Ver detalhes
+      </Link>
     </article>
   );
 }
@@ -255,11 +268,33 @@ function CourseCard({ course }: { course: Course }) {
 export default function CoursesCatalog() {
   const { token } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
+  const [drafts, setDrafts] = useState<EnrollmentDraft[]>([]);
+  const [draftError, setDraftError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState("");
   const [institutionFilter, setInstitutionFilter] = useState("");
+
+  useEffect(() => {
+    if (!token) return;
+    const loadDrafts = () => {
+      try {
+        setDrafts(listEnrollmentDrafts(token).filter((draft) => draft.etapa !== "RESUMO"));
+        setDraftError("");
+      } catch (loadError) {
+        setDraftError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Não foi possível recuperar as inscrições em andamento.",
+        );
+      }
+    };
+    loadDrafts();
+    const eventName = enrollmentDraftsUpdatedEvent();
+    window.addEventListener(eventName, loadDrafts);
+    return () => window.removeEventListener(eventName, loadDrafts);
+  }, [token]);
 
   useEffect(() => {
     let active = true;
@@ -338,6 +373,27 @@ export default function CoursesCatalog() {
         </div>
       </header>
 
+      {draftError ? (
+        <p className="alert" role="alert">{draftError}</p>
+      ) : drafts.length > 0 ? (
+        <section className="card enrollment-resume" aria-labelledby="enrollment-resume-title">
+          <h2 id="enrollment-resume-title">Inscrições em andamento</h2>
+          <ul>
+            {drafts.map((draft) => (
+              <li key={draft.id}>
+                <span>{draft.cursoNome ?? "Inscrição"} · etapa: {stepLabel(draft.etapa)}</span>
+                <Link
+                  className="btn btn-ghost"
+                  href={`/aluno/inscricoes/${encodeURIComponent(draft.id)}/${draft.etapa.toLowerCase()}`}
+                >
+                  Retomar
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {error ? (
         <section className="card courses-message">
           <p className="alert" role="alert">{error}</p>
@@ -399,4 +455,15 @@ export default function CoursesCatalog() {
       )}
     </div>
   );
+}
+
+function stepLabel(step: EnrollmentDraft["etapa"]): string {
+  switch (step) {
+    case "RENDA":
+      return "renda familiar";
+    case "DOCUMENTOS":
+      return "documentos";
+    case "RESUMO":
+      return "resumo";
+  }
 }

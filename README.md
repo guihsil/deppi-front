@@ -32,6 +32,9 @@ npm run build
 - `/login`: autenticação.
 - `/admin`, `/deppi` e `/professor`: áreas protegidas por cargo.
 - `/aluno`: catálogo de cursos em andamento, protegido pelo cargo de aluno.
+- `/aluno/inscricoes/[id]/renda`: etapa de renda familiar da inscrição.
+- `/aluno/inscricoes/[id]/documentos`: envio dos documentos da inscrição.
+- `/aluno/inscricoes/[id]/resumo`: confirmação e status da inscrição.
 - `/perfil`: consulta e edição dos dados do usuário autenticado.
 - `/403`: aviso de acesso negado.
 - `/`: redireciona para a página inicial do cargo prioritário do usuário.
