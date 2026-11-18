@@ -5,6 +5,8 @@ type ApiOptions = {
   body?: unknown;
   token?: string | null;
   auth?: boolean;
+  cache?: RequestCache;
+  signal?: AbortSignal;
 };
 
 type ApiErrorBody = {
@@ -58,15 +60,17 @@ function fieldErrors(data: unknown): ApiFieldError[] {
 
 export async function api<T>(
   path: string,
-  { method = "GET", body, token, auth = true }: ApiOptions = {},
+  { method = "GET", body, token, auth = true, cache, signal }: ApiOptions = {},
 ): Promise<T> {
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       method,
+      cache,
+      signal,
       headers: {
-        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        ...(isFormData || body === undefined ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body:
@@ -106,7 +110,7 @@ export async function api<T>(
   }
 
   if (!response.ok) {
-    if (response.status === 401 && auth && typeof window !== "undefined") {
+    if (response.status === 401 && auth && !signal?.aborted && typeof window !== "undefined") {
       window.dispatchEvent(new Event("deppi:unauthorized"));
     }
     const fields = fieldErrors(data);
