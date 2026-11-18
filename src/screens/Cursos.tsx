@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { ApiError, api } from "../api";
 import { useAuth } from "../auth/AuthContext";
+import { courseEnrollmentPath } from "../lib/enrollment-review";
 
 type Institution = {
   id: string;
@@ -745,6 +747,10 @@ export default function CursosScreen({ mode = "deppi" }: { mode?: "deppi" | "pro
                       </td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-2">
+                          <Link className="btn btn-ghost" href={courseEnrollmentPath(course.id)}
+                            aria-label={`Inscrições de ${course.nome}`}>
+                            Inscrições
+                          </Link>
                           {canManageStatus && course.status?.toUpperCase() === "ANALISE" && (
                             <button
                               className="btn btn-ghost"

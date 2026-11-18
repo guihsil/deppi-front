@@ -970,6 +970,167 @@
     overflow-wrap: anywhere;
   }
 
+  .enrollment-review-heading,
+  .enrollment-review-student-data,
+  .enrollment-review-field-group {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .main section.enrollment-review-section,
+  .main section.enrollment-review-field-group {
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  .enrollment-review-field-group dl {
+    margin-top: 0.4rem;
+  }
+
+  .enrollment-review-student-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .enrollment-review-student-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .enrollment-review-rows,
+  .enrollment-review-timeline {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .enrollment-review-rows li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    padding-block: 0.75rem;
+    overflow-wrap: anywhere;
+  }
+
+  .enrollment-review-rows li + li {
+    border-top: 1px solid var(--color-line);
+  }
+
+  .enrollment-review-timeline {
+    border-inline-start: 2px solid var(--color-line);
+    margin-inline-start: 0.35rem;
+    padding-inline-start: 1rem;
+  }
+
+  .enrollment-review-timeline li {
+    position: relative;
+    padding-bottom: 1rem;
+    overflow-wrap: anywhere;
+  }
+
+  .enrollment-review-timeline li:last-child {
+    padding-bottom: 0;
+  }
+
+  .enrollment-review-timeline li::before {
+    content: "";
+    position: absolute;
+    inset: 0.45rem auto auto -1.4rem;
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 50%;
+    background: var(--color-blue);
+  }
+
+  .enrollment-review-timeline time {
+    font-size: 0.875rem;
+    color: var(--color-ink-secondary);
+  }
+
+  dialog.enrollment-review-dialog[open] {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(44rem, calc(100% - 2rem));
+    max-height: calc(100dvh - 2rem);
+    overflow: auto;
+    color: var(--color-ink);
+    overflow-wrap: anywhere;
+  }
+
+  .enrollment-review-dialog > * + * {
+    margin-top: 1rem;
+  }
+
+  .enrollment-review-dialog::backdrop {
+    background: color-mix(in srgb, var(--color-ink) 60%, transparent);
+  }
+
+  dialog.enrollment-review-dialog.enrollment-review-document-dialog[open] {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    width: min(94vw, 82rem);
+    height: min(92dvh, 70rem);
+    max-width: none;
+    max-height: none;
+    margin: auto;
+    padding: clamp(1.25rem, 3vw, 2.5rem);
+  }
+
+  .enrollment-review-document-dialog::backdrop {
+    background: rgb(12 20 40 / 80%);
+  }
+
+  .enrollment-review-dialog label {
+    display: block;
+    margin-bottom: 0.375rem;
+  }
+
+  .enrollment-review-dialog textarea {
+    width: 100%;
+    padding: 0.625rem;
+    border: 1px solid var(--color-ink-secondary);
+    border-radius: 8px;
+    resize: vertical;
+  }
+
+  .enrollment-review-dialog [aria-invalid="true"] {
+    border-color: var(--color-red);
+  }
+
+  .enrollment-review-document-content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .enrollment-review-pdf,
+  .enrollment-review-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  .enrollment-review-image {
+    object-fit: contain;
+  }
+
+  @media (max-width: 36rem) {
+    .enrollment-review-student-card {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+
   .course-detail-alert,
   .course-detail-loading {
     display: grid;
